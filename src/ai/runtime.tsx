@@ -1,8 +1,16 @@
 import type { PropsWithChildren } from "react";
-import { createContext, useCallback, useContext, useMemo } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+} from "react";
 import { useAuth } from "../auth/useAuth";
+import { env } from "../config/env";
 import type { AiPublicClient, AuthContext, MutationContext } from "./contracts";
 import { FakeAiClient } from "./fakeAiClient";
+import { HttpAiPublicClient } from "./httpAiClient";
 
 export type AiClientMode = "disabled" | "fake" | "public";
 
@@ -10,6 +18,7 @@ export type AiClientAdapter = {
   client: AiPublicClient;
   mode: Exclude<AiClientMode, "disabled">;
   resolveAccessToken: (sessionAccessToken: string, userId: string) => string;
+  cancelAll?: () => void;
 };
 
 type AiRuntimeValue = {
@@ -45,14 +54,32 @@ function developmentAdapter(): AiClientAdapter | null {
   };
 }
 
+function configuredAdapter(): AiClientAdapter | null {
+  if (!env.aiApiBaseUrl) return developmentAdapter();
+  try {
+    const client = new HttpAiPublicClient({
+      allowInsecureLoopback: __DEV__ || process.env.NODE_ENV === "test",
+      baseUrl: env.aiApiBaseUrl,
+    });
+    return {
+      cancelAll: () => client.cancelAll(),
+      client,
+      mode: "public",
+      resolveAccessToken: (sessionAccessToken) => sessionAccessToken,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AiClientProvider({
   adapter,
   children,
 }: PropsWithChildren<{ adapter?: AiClientAdapter | null }>) {
-  const { accessToken, user } = useAuth();
+  const { accessToken, registerBeforeSignOutCleanup, user } = useAuth();
   const userId = user?.id;
   const selectedAdapter = useMemo(
-    () => (adapter === undefined ? developmentAdapter() : adapter),
+    () => (adapter === undefined ? configuredAdapter() : adapter),
     [adapter],
   );
   const isReady = Boolean(selectedAdapter && accessToken && userId);
@@ -75,6 +102,21 @@ export function AiClientProvider({
       idempotencyKey,
     }),
     [authContext],
+  );
+
+  useEffect(
+    () =>
+      registerBeforeSignOutCleanup(async () => {
+        selectedAdapter?.cancelAll?.();
+      }),
+    [registerBeforeSignOutCleanup, selectedAdapter],
+  );
+
+  useEffect(
+    () => () => {
+      selectedAdapter?.cancelAll?.();
+    },
+    [accessToken, selectedAdapter, userId],
   );
 
   const value = useMemo<AiRuntimeValue>(

@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { isValidAiApiBaseUrl } from "../ai/baseUrl";
 
 const devApiBaseUrl = Platform.select({
   android: "http://10.0.2.2:8000",
@@ -10,6 +11,7 @@ function clean(value: string | undefined) {
 }
 
 export const env = {
+  aiApiBaseUrl: clean(process.env.EXPO_PUBLIC_AI_API_BASE_URL),
   apiBaseUrl: clean(process.env.EXPO_PUBLIC_API_BASE_URL) || (__DEV__ ? devApiBaseUrl : ""),
   authRedirectUrl:
     process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim() || "luma://auth/update-password",
@@ -23,11 +25,16 @@ export const env = {
     process.env.EXPO_PUBLIC_WHATSAPP_PHONE_VERIFICATION_ONBOARDING_REQUIRED === "true",
 };
 
-export const missingRequiredEnvironment = () =>
-  [
+export const missingRequiredEnvironment = () => {
+  const aiBaseUrlReady = env.aiApiBaseUrl
+    ? isValidAiApiBaseUrl(env.aiApiBaseUrl, __DEV__)
+    : __DEV__;
+  return [
+    ["EXPO_PUBLIC_AI_API_BASE_URL", aiBaseUrlReady ? "configured" : ""],
     ["EXPO_PUBLIC_API_BASE_URL", env.apiBaseUrl],
     ["EXPO_PUBLIC_SUPABASE_URL", env.supabaseUrl],
     ["EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY", env.supabasePublishableKey],
   ]
     .filter(([, value]) => !value)
     .map(([name]) => name);
+};

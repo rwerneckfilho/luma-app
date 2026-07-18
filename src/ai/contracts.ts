@@ -85,6 +85,8 @@ export type PendingAction = {
   action_id: string;
   capability_id: string;
   preview: ActionPreview;
+  confirmation_ref: string;
+  presented_preview_hash: string;
   expires_at: string;
 };
 
@@ -114,6 +116,8 @@ export type ChatAction = {
   capability_id: string;
   status: ActionStatus;
   preview?: ActionPreview | null;
+  confirmation_ref: string;
+  presented_preview_hash: string;
   expires_at: string;
 };
 
@@ -145,7 +149,11 @@ export interface AiPublicClient {
     context: MutationContext,
     request: { patient_selection_ref: string; title?: string },
   ): Promise<Chat>;
-  listChats(context: AuthContext, status?: ChatStatus): Promise<ChatPage>;
+  listChats(
+    context: AuthContext,
+    status?: ChatStatus,
+    cursor?: string,
+  ): Promise<ChatPage>;
   getChat(context: AuthContext, chatId: string): Promise<Chat>;
   listMessages(
     context: AuthContext,

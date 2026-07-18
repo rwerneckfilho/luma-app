@@ -1,5 +1,15 @@
-import type { AiPublicClient, AuthContext, MessagePage } from "./contracts";
-import { consumeRunEvents, listCompleteTranscript } from "./chatSession";
+import type {
+  AiPublicClient,
+  AuthContext,
+  Chat,
+  ChatPage,
+  MessagePage,
+} from "./contracts";
+import {
+  consumeRunEvents,
+  listCompleteChats,
+  listCompleteTranscript,
+} from "./chatSession";
 import {
   initialEphemeralChatState,
   reduceEphemeralChatState,
@@ -105,6 +115,42 @@ describe("native chat session orchestration", () => {
     pages.set("second", { items: [], next_cursor: "second" });
     await expect(listCompleteTranscript(client, auth, "chat-1")).rejects.toThrow(
       "message_cursor_cycle",
+    );
+  });
+
+  it("loads every chat page, de-duplicates moving rows and rejects a cursor cycle", async () => {
+    const chat: Chat = {
+      id: "00000000-0000-4000-8000-000000000903",
+      title: null,
+      patient: { kind: "self", label: "Você" },
+      status: "active",
+      created_at: "2026-07-18T12:00:00.000Z",
+      updated_at: "2026-07-18T12:00:00.000Z",
+    };
+    const pages = new Map<string, ChatPage>([
+      ["first", { items: [chat], next_cursor: "second" }],
+      ["second", { items: [chat], next_cursor: null }],
+    ]);
+    const listChats = jest.fn(
+      async (
+        _context: AuthContext,
+        _status?: string,
+        cursor?: string,
+      ) => pages.get(cursor ?? "first")!,
+    );
+    const client = { listChats } as unknown as AiPublicClient;
+
+    await expect(listCompleteChats(client, auth, "active")).resolves.toEqual([
+      chat,
+    ]);
+    expect(listChats.mock.calls.map((call) => call[2])).toEqual([
+      undefined,
+      "second",
+    ]);
+
+    pages.set("second", { items: [], next_cursor: "second" });
+    await expect(listCompleteChats(client, auth, "active")).rejects.toThrow(
+      "chat_cursor_cycle",
     );
   });
 });

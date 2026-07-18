@@ -74,5 +74,30 @@ disconnect, ignores duplicate events, bounds reconnect attempts, aborts on unmou
 on `410 access_changed`. User messages use locally generated UUIDv4 `client_message_id` values, and
 the composer restores unsent text only when the backend has not accepted the message.
 
-Remaining APP-V1 slices are the production HTTP/SSE adapter and contract fixtures, link management,
-action-bound confirmation decisions, secure handoffs and physical-device suspend/resume validation.
+Remaining APP-V1 slices are link management, action-bound confirmation decisions, secure handoffs
+and physical-device validation.
+
+## APP-V1-02 — production HTTP and resumable SSE
+
+`HttpAiPublicClient` now implements every operation exposed by the typed `AiPublicClient` seam.
+JSON responses and public run events are validated at runtime against strict `C-AI-PUBLIC 0.1.0`
+schemas. Contract drift, mismatched SSE `id`/`event` fields, wrong run bindings, malformed media types
+and oversized responses fail closed with safe error codes; backend diagnostic or clinical text is not
+retained in thrown errors.
+
+The adapter uses Expo SDK 56's WinterCG streaming fetch, sends the Supabase bearer only in the
+`Authorization` header, blocks redirects, emits opaque UUID request/idempotency headers and requires
+HTTPS outside explicitly allowed development loopbacks. `EXPO_PUBLIC_AI_API_BASE_URL` selects the
+public adapter; an absent or invalid production URL leaves the AI client unavailable. Development
+without a configured AI URL continues to use the owner-scoped fake.
+
+Chat and transcript cursors are exhausted with cycle protection and resource de-duplication. SSE
+reconnects send the last reduced sequence through `Last-Event-ID`, validate each frame before
+reduction and ignore already-reduced replay frames. Logout or session replacement aborts every live
+AI request. Suspending a screen aborts its durable run stream and foregrounding resumes the same
+`run_id` from the last sequence; transcript and event state remain memory-only.
+
+Automated fixtures cover authenticated requests, pagination, fragmented SSE, duplicate replay,
+401/410, idempotency conflicts, expired actions, NDJSON streaming and cancellation. Physical iOS
+and Android validation remains a release gate because process suspension and radio behavior cannot
+be proven by Jest.

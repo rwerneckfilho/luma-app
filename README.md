@@ -7,6 +7,7 @@ Aplicativo nativo da LUMA para iOS e Android, construído com Expo SDK 56 e Reac
 O aplicativo mantém a divisão já existente na plataforma:
 
 - `luma-core` (FastAPI) é o backend de domínio e a API consumida pelo app;
+- `luma-ai` é o backend isolado do assistente e acessa dados clínicos somente pelos contratos do `luma-core`;
 - Supabase fornece Auth, Storage e PostgreSQL, mas não substitui o backend;
 - `luma-notifications` planeja e envia WhatsApp, Web Push e Expo Push;
 - `luma-front-webapp` continua sendo o cliente web e a referência de paridade funcional.
@@ -30,10 +31,14 @@ Variáveis públicas obrigatórias:
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `EXPO_PUBLIC_API_BASE_URL`
+- `EXPO_PUBLIC_AI_API_BASE_URL`, a origem do `luma-ai` (HTTPS obrigatório em produção)
 - `EXPO_PUBLIC_EAS_PROJECT_ID` para Expo Push em builds reais
 - `EXPO_PUBLIC_AUTH_REDIRECT_URL`, normalmente `luma://auth/update-password`
 
 Em desenvolvimento, o backend usa `http://localhost:8000` no iOS e `http://10.0.2.2:8000` no emulador Android quando `EXPO_PUBLIC_API_BASE_URL` não está definido.
+O assistente usa o fake em memória quando `EXPO_PUBLIC_AI_API_BASE_URL` não está definido em
+desenvolvimento. Quando definido, HTTP sem TLS só é aceito para `localhost`, `127.0.0.1` e
+`10.0.2.2`; builds de produção falham fechados sem uma origem HTTPS válida.
 
 ## Notificações nativas
 

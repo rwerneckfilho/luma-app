@@ -1,6 +1,8 @@
 import type {
   AiPublicClient,
   AuthContext,
+  Chat,
+  ChatStatus,
   Message,
   RunEvent,
   RunStatus,
@@ -158,18 +160,58 @@ export async function listCompleteTranscript(
   chatId: string,
 ): Promise<Message[]> {
   const messages: Message[] = [];
+  const visitedMessageIds = new Set<string>();
   const visitedCursors = new Set<string>();
   let cursor: string | undefined;
 
-  do {
+  while (!context.signal?.aborted) {
     const page = await client.listMessages(context, chatId, cursor);
-    messages.push(...page.items);
+    for (const message of page.items) {
+      if (visitedMessageIds.has(message.id)) continue;
+      visitedMessageIds.add(message.id);
+      messages.push(message);
+    }
     const nextCursor = page.next_cursor ?? undefined;
     if (!nextCursor) return messages;
     if (visitedCursors.has(nextCursor)) throw new Error("message_cursor_cycle");
     visitedCursors.add(nextCursor);
     cursor = nextCursor;
-  } while (!context.signal?.aborted);
+  }
 
-  return messages;
+  throw Object.assign(new Error("request_cancelled"), {
+    code: "request_cancelled",
+    name: "AbortError",
+    status: 499,
+  });
+}
+
+export async function listCompleteChats(
+  client: AiPublicClient,
+  context: AuthContext,
+  status: ChatStatus,
+): Promise<Chat[]> {
+  const chats: Chat[] = [];
+  const visitedChatIds = new Set<string>();
+  const visitedCursors = new Set<string>();
+  let cursor: string | undefined;
+
+  while (!context.signal?.aborted) {
+    const page = await client.listChats(context, status, cursor);
+    for (const chat of page.items) {
+      if (visitedChatIds.has(chat.id)) continue;
+      visitedChatIds.add(chat.id);
+      chats.push(chat);
+    }
+    const nextCursor = page.next_cursor ?? undefined;
+    if (!nextCursor) return chats;
+    if (visitedCursors.has(nextCursor)) throw new Error("chat_cursor_cycle");
+    visitedCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  throw Object.assign(new Error("request_cancelled"), {
+    code: "request_cancelled",
+    name: "AbortError",
+    status: 499,
+  });
 }

@@ -94,7 +94,9 @@ export class FakeAiClient implements AiPublicClient {
   async listChats(
     context: AuthContext,
     status?: ChatStatus,
+    cursor?: string,
   ): Promise<ChatPage> {
+    void cursor;
     const owner = this.actor(context);
     return {
       items: [...this.chats.values()]
@@ -179,6 +181,8 @@ export class FakeAiClient implements AiPublicClient {
         action_id: actionId,
         capability_id: scenario.confirmation.capabilityId,
         preview: scenario.confirmation.preview,
+        confirmation_ref: `fake-confirmation-${actionId}`,
+        presented_preview_hash: "0".repeat(64),
         expires_at: this.futureTimestamp(),
       };
       runEvents.push(
@@ -193,6 +197,8 @@ export class FakeAiClient implements AiPublicClient {
         capability_id: pendingAction.capability_id,
         status: "awaiting_confirmation",
         preview: pendingAction.preview,
+        confirmation_ref: pendingAction.confirmation_ref,
+        presented_preview_hash: pendingAction.presented_preview_hash,
         expires_at: pendingAction.expires_at,
         runId,
         owner,

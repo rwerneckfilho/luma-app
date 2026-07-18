@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { AppState } from "react-native";
 import type { Chat, ChatStatus } from "./contracts";
 import {
   consumeRunEvents,
   aiUiErrorCode,
   isAbortError,
+  listCompleteChats,
   listCompleteTranscript,
 } from "./chatSession";
 import {
@@ -41,11 +43,12 @@ export function useAiChats(status: ChatStatus = "active") {
   return useQuery({
     enabled: runtime.isReady,
     queryFn: async () => {
-      const page = await requireClient(runtime).listChats(
+      const chats = await listCompleteChats(
+        requireClient(runtime),
         runtime.authContext(),
         status,
       );
-      return sortChats(page.items);
+      return sortChats(chats);
     },
     queryKey: aiQueryKeys.chats(runtime.cacheScope, status),
   });
@@ -116,6 +119,15 @@ export function useAiChatSession(chatId: string) {
   const activeRequest = useRef<AbortController | null>(null);
   const operation = useRef(0);
   const submitting = useRef(false);
+  const stateRef = useRef(state);
+  const loadTranscriptRef = useRef<(showLoading?: boolean) => Promise<void>>(
+    async () => undefined,
+  );
+  const retryRef = useRef<() => Promise<void>>(async () => undefined);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const beginOperation = useCallback(() => {
     operation.current += 1;
@@ -175,6 +187,10 @@ export function useAiChatSession(chatId: string) {
       }),
     [runtime],
   );
+
+  useEffect(() => {
+    loadTranscriptRef.current = loadTranscript;
+  }, [loadTranscript]);
 
   const send = useCallback(
     async (rawContent: string) => {
@@ -240,6 +256,7 @@ export function useAiChatSession(chatId: string) {
   );
 
   const retry = useCallback(async () => {
+    if (!runtime.isReady) return;
     if (!state.activeRunId) {
       await loadTranscript();
       return;
@@ -259,7 +276,36 @@ export function useAiChatSession(chatId: string) {
     loadTranscript,
     state.activeRunId,
     state.lastEventId,
+    runtime.isReady,
   ]);
+
+  useEffect(() => {
+    retryRef.current = retry;
+  }, [retry]);
+
+  useEffect(() => {
+    let previousState = AppState.currentState;
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const wasActive = previousState === "active";
+      previousState = nextState;
+      const snapshot = stateRef.current;
+      const run = snapshot.activeRunId;
+      if (nextState !== "active" && snapshot.phase !== "submitting") {
+        operation.current += 1;
+        activeRequest.current?.abort();
+        if (run) dispatch({ type: "stream.disconnected" });
+      } else if (nextState === "active" && !wasActive && run) {
+        void retryRef.current();
+      } else if (
+        nextState === "active" &&
+        !wasActive &&
+        (snapshot.needsTranscriptRefresh || snapshot.phase === "loading")
+      ) {
+        void loadTranscriptRef.current(snapshot.phase === "loading");
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   return {
     reload: loadTranscript,
