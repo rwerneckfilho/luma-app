@@ -3,6 +3,7 @@ import { type PropsWithChildren, useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AiClientProvider } from "../ai";
 import { AuthProvider } from "../auth/AuthProvider";
 import { missingRequiredEnvironment } from "../config/env";
 import { colors, spacing } from "../design/theme";
@@ -35,8 +36,10 @@ export function AppProviders({ children }: PropsWithChildren) {
         <QueryClientProvider client={queryClient}>
           <QueryLifecycle />
           <AuthProvider>
-            <LocaleSynchronizer />
-            <NotificationsProvider>{children}</NotificationsProvider>
+            <AiClientProvider>
+              <LocaleSynchronizer />
+              <NotificationsProvider>{children}</NotificationsProvider>
+            </AiClientProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
@@ -46,7 +49,14 @@ export function AppProviders({ children }: PropsWithChildren) {
 
 const styles = StyleSheet.create({
   body: { color: colors.muted, fontSize: 15, textAlign: "center" },
-  configurationError: { alignItems: "center", backgroundColor: colors.background, flex: 1, gap: spacing.md, justifyContent: "center", padding: spacing.xl },
+  configurationError: {
+    alignItems: "center",
+    backgroundColor: colors.background,
+    flex: 1,
+    gap: spacing.md,
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
   flex: { flex: 1 },
   title: { color: colors.ink, fontSize: 22, fontWeight: "800" },
 });

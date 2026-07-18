@@ -56,3 +56,23 @@ error codes and correlation IDs, never chat content.
 
 Visual chat screens, navigation wiring and production transport activation belong to APP-V1-01,
 not this foundation commit.
+
+## APP-V1-01 — native chat surface slice
+
+The first APP-V1 slice adds an authenticated Assistant tab with native list, empty, loading, error,
+refresh, create-chat, transcript and composer states. New conversations are bound to `self`; care
+selection remains reserved for APP-CARE-01. A completed run always refreshes the canonical paged
+transcript instead of persisting or rebuilding assistant messages from deltas.
+
+`AiClientProvider` is the typed runtime boundary. It accepts an injected `AiClientAdapter`, keeps
+the bearer and owner cache scope in memory, and defaults to the owner-scoped fake only in development
+and tests. Production builds fail closed until the reviewed HTTP/native stream adapter is injected.
+The React Query keys are explicitly marked `ai/ephemeral`; this project does not dehydrate them.
+
+Run consumption resumes the same durable `run_id` from the last monotonic event sequence after a
+disconnect, ignores duplicate events, bounds reconnect attempts, aborts on unmount and fails closed
+on `410 access_changed`. User messages use locally generated UUIDv4 `client_message_id` values, and
+the composer restores unsent text only when the backend has not accepted the message.
+
+Remaining APP-V1 slices are the production HTTP/SSE adapter and contract fixtures, link management,
+action-bound confirmation decisions, secure handoffs and physical-device suspend/resume validation.

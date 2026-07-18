@@ -1,6 +1,13 @@
 import type { Href } from "expo-router";
 import { Redirect, router, Tabs } from "expo-router";
-import { Clock3, HeartHandshake, House, Pill, UserRound } from "lucide-react-native";
+import {
+  Clock3,
+  HeartHandshake,
+  House,
+  MessageCircle,
+  Pill,
+  UserRound,
+} from "lucide-react-native";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/useAuth";
@@ -51,6 +58,15 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="assistant"
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <MessageCircle color={color} size={size} />
+          ),
+          title: t("nav.assistant"),
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           tabBarIcon: ({ color, size }) => <Clock3 color={color} size={size} />,
@@ -60,14 +76,18 @@ export default function AppLayout() {
       <Tabs.Screen
         name="caregivers"
         options={{
-          tabBarIcon: ({ color, size }) => <HeartHandshake color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => (
+            <HeartHandshake color={color} size={size} />
+          ),
           title: t("nav.caregivers"),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ color, size }) => <UserRound color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => (
+            <UserRound color={color} size={size} />
+          ),
           title: t("nav.profile"),
         }}
       />

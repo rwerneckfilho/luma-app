@@ -51,7 +51,10 @@ export class FakeAiClient implements AiPublicClient {
   private readonly challenges = new Map<string, StoredChallenge>();
   private readonly links = new Map<string, StoredLink>();
   private readonly chatIdempotency = new Map<string, string>();
-  private readonly messageIdempotency = new Map<string, { content: string; messageId: string; runId: string }>();
+  private readonly messageIdempotency = new Map<
+    string,
+    { content: string; messageId: string; runId: string }
+  >();
   private nextScenario: FakeScenario | null = null;
 
   queueScenario(scenario: FakeScenario) {
@@ -75,7 +78,7 @@ export class FakeAiClient implements AiPublicClient {
       title: request.title ?? null,
       patient: {
         kind: request.patient_selection_ref === "self" ? "self" : "care",
-        label: "Paciente sintético",
+        label: request.patient_selection_ref === "self" ? "Você" : "Pessoa assistida",
       },
       status: "active",
       created_at: timestamp,
@@ -88,11 +91,16 @@ export class FakeAiClient implements AiPublicClient {
     return this.publicChat(chat);
   }
 
-  async listChats(context: AuthContext, status?: ChatStatus): Promise<ChatPage> {
+  async listChats(
+    context: AuthContext,
+    status?: ChatStatus,
+  ): Promise<ChatPage> {
     const owner = this.actor(context);
     return {
       items: [...this.chats.values()]
-        .filter((chat) => chat.owner === owner && (!status || chat.status === status))
+        .filter(
+          (chat) => chat.owner === owner && (!status || chat.status === status),
+        )
         .map((chat) => this.publicChat(chat)),
       next_cursor: null,
     };
@@ -102,7 +110,10 @@ export class FakeAiClient implements AiPublicClient {
     return this.publicChat(this.requireChat(this.actor(context), chatId));
   }
 
-  async listMessages(context: AuthContext, chatId: string): Promise<MessagePage> {
+  async listMessages(
+    context: AuthContext,
+    chatId: string,
+  ): Promise<MessagePage> {
     const owner = this.actor(context);
     this.requireChat(owner, chatId);
     return { items: [...(this.messages.get(chatId) ?? [])], next_cursor: null };
@@ -111,14 +122,19 @@ export class FakeAiClient implements AiPublicClient {
   async createMessage(
     context: AuthContext,
     chatId: string,
-    request: { client_message_id: string; content: string; attachment_refs?: string[] },
+    request: {
+      client_message_id: string;
+      content: string;
+      attachment_refs?: string[];
+    },
   ) {
     const owner = this.actor(context);
     const chat = this.requireChat(owner, chatId);
     const replayKey = `${owner}:${chatId}:${request.client_message_id}`;
     const replay = this.messageIdempotency.get(replayKey);
     if (replay) {
-      if (replay.content !== request.content) throw new FakeAiError("idempotency_conflict", 409);
+      if (replay.content !== request.content)
+        throw new FakeAiError("idempotency_conflict", 409);
       return {
         message: this.findMessage(chatId, replay.messageId),
         run: this.requireRun(owner, replay.runId),
@@ -135,7 +151,9 @@ export class FakeAiClient implements AiPublicClient {
       created_at: timestamp,
     };
     const runId = this.uuid();
-    const scenario = this.nextScenario ?? { assistantText: `Echo: ${request.content}` };
+    const scenario = this.nextScenario ?? {
+      assistantText: `Echo: ${request.content}`,
+    };
     this.nextScenario = null;
     const run: Run = {
       id: runId,
@@ -148,7 +166,10 @@ export class FakeAiClient implements AiPublicClient {
     };
     const runEvents: RunEvent[] = [
       this.runEvent(runId, 1, { type: "run.started" }),
-      this.runEvent(runId, 2, { type: "assistant.delta", delta: scenario.assistantText }),
+      this.runEvent(runId, 2, {
+        type: "assistant.delta",
+        delta: scenario.assistantText,
+      }),
     ];
 
     this.messages.get(chatId)?.push(message);
@@ -160,7 +181,12 @@ export class FakeAiClient implements AiPublicClient {
         preview: scenario.confirmation.preview,
         expires_at: this.futureTimestamp(),
       };
-      runEvents.push(this.runEvent(runId, 3, { type: "action.required", action: pendingAction }));
+      runEvents.push(
+        this.runEvent(runId, 3, {
+          type: "action.required",
+          action: pendingAction,
+        }),
+      );
       this.actions.set(actionId, {
         id: actionId,
         chat_id: chatId,
@@ -221,16 +247,23 @@ export class FakeAiClient implements AiPublicClient {
     if (!action || action.owner !== owner || action.chat_id !== chatId) {
       throw new FakeAiError("not_found", 404);
     }
-    if (action.status === "succeeded" || action.status === "cancelled") return this.publicAction(action);
+    if (action.status === "succeeded" || action.status === "cancelled")
+      return this.publicAction(action);
 
     action.status = decision === "confirm" ? "succeeded" : "cancelled";
     const run = this.requireRun(owner, action.runId);
     run.status = "succeeded";
     run.completed_at = this.timestamp();
     const runEvents = this.events.get(run.id) ?? [];
-    const text = decision === "confirm" ? "Ação sintética confirmada." : "Ação sintética cancelada.";
+    const text =
+      decision === "confirm"
+        ? "Ação sintética confirmada."
+        : "Ação sintética cancelada.";
     runEvents.push(
-      this.runEvent(run.id, runEvents.length + 1, { type: "assistant.delta", delta: text }),
+      this.runEvent(run.id, runEvents.length + 1, {
+        type: "assistant.delta",
+        delta: text,
+      }),
       this.runEvent(run.id, runEvents.length + 2, { type: "run.completed" }),
     );
     this.messages.get(chatId)?.push({
@@ -262,7 +295,10 @@ export class FakeAiClient implements AiPublicClient {
     return this.publicChallenge(challenge);
   }
 
-  completeWhatsAppLinkForTest(challengeId: string, displayHint = "•••• 0000"): ChannelLink {
+  completeWhatsAppLinkForTest(
+    challengeId: string,
+    displayHint = "•••• 0000",
+  ): ChannelLink {
     const challenge = this.challenges.get(challengeId);
     if (!challenge) throw new FakeAiError("not_found", 404);
     const link: StoredLink = {
@@ -287,7 +323,10 @@ export class FakeAiClient implements AiPublicClient {
     };
   }
 
-  async revokeChannelLink(context: MutationContext, linkId: string): Promise<ChannelLink> {
+  async revokeChannelLink(
+    context: MutationContext,
+    linkId: string,
+  ): Promise<ChannelLink> {
     const owner = this.actor(context);
     const link = this.links.get(linkId);
     if (!link || link.owner !== owner) throw new FakeAiError("not_found", 404);
@@ -311,7 +350,8 @@ export class FakeAiClient implements AiPublicClient {
   }
 
   private actor(context: AuthContext): string {
-    if (context.signal?.aborted) throw new FakeAiError("request_cancelled", 499);
+    if (context.signal?.aborted)
+      throw new FakeAiError("request_cancelled", 499);
     const match = /^fake-user-([A-Za-z0-9_-]{1,64})$/.exec(context.accessToken);
     if (!match) throw new FakeAiError("invalid_fake_identity", 401);
     return match[1];
@@ -320,7 +360,8 @@ export class FakeAiClient implements AiPublicClient {
   private requireChat(owner: string, chatId: string): StoredChat {
     const chat = this.chats.get(chatId);
     if (!chat || chat.owner !== owner) throw new FakeAiError("not_found", 404);
-    if (chat.status === "access_changed") throw new FakeAiError("access_changed", 410);
+    if (chat.status === "access_changed")
+      throw new FakeAiError("access_changed", 410);
     return chat;
   }
 
@@ -332,7 +373,9 @@ export class FakeAiClient implements AiPublicClient {
   }
 
   private findMessage(chatId: string, messageId: string): Message {
-    const message = this.messages.get(chatId)?.find((item) => item.id === messageId);
+    const message = this.messages
+      .get(chatId)
+      ?.find((item) => item.id === messageId);
     if (!message) throw new FakeAiError("not_found", 404);
     return message;
   }

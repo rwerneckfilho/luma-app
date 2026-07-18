@@ -18,6 +18,7 @@ Esta matriz trata o `luma-front-webapp` como referência funcional. Recursos esp
 | Perfil | Foto privada, Luma ID, idioma, fuso, WhatsApp, senha e logout | `src/features/profile`, `src/profilePhotos`, `src/me` |
 | Relações de cuidado | Convites, aceite/recusa, permissões, escopo, preferência e encerramento | `src/features/care`, `src/care` |
 | Timeline e rotinas do paciente | Visualização autorizada e revisão de rotina pelo cuidador | `src/features/care` |
+| Assistente LUMA | Lista, criação, transcript, composer e reconexão nativos contra Fake AI; produção permanece fail-closed | `src/features/ai`, `src/ai` |
 | PWA/Web Push | Substituído por Expo Push real para iOS e Android | `src/notifications` + `luma-core` + `luma-notifications` |
 | Ações na tela bloqueada | `Tomei` e `Pular`, inclusive para alerta atrasado; task headless no Android | `src/notifications/backgroundTask.ts`, `src/notifications/responseProcessor.ts` |
 | Internacionalização | pt-BR, inglês e espanhol, incluindo ações do sistema | `src/i18n` |
@@ -29,5 +30,6 @@ Esta matriz trata o `luma-front-webapp` como referência funcional. Recursos esp
 - definir um EAS Project ID real e cadastrar credenciais APNs/FCM;
 - configurar `EXPO_PUSH_DRY_RUN=false` somente no ambiente que possui credenciais válidas;
 - autorizar `luma://auth/update-password` nos redirect URLs do Supabase;
+- substituir o Fake AI pelo adaptador HTTP/SSE revisado e executar fixtures de `C-AI-PUBLIC` antes de ativar o assistente em produção;
 - validar as duas ações em aparelhos físicos iOS e Android, com app em foreground, background e encerrado;
 - executar builds internos antes dos perfis de produção.

@@ -17,7 +17,8 @@ async function collect<T>(iterable: AsyncIterable<T>) {
 
 function applyRunEvents(state: EphemeralChatState, events: RunEvent[]) {
   return events.reduce(
-    (current, event) => reduceEphemeralChatState(current, { type: "stream.event", event }),
+    (current, event) =>
+      reduceEphemeralChatState(current, { type: "stream.event", event }),
     state,
   );
 }
@@ -29,6 +30,7 @@ describe("FakeAiClient and ephemeral chat states", () => {
       patient_selection_ref: "self",
       title: "Novo chat",
     });
+    expect(chat.patient).toEqual({ kind: "self", label: "Você" });
     let state = reduceEphemeralChatState(initialEphemeralChatState, {
       type: "load.succeeded",
       chatId: chat.id,
@@ -42,7 +44,10 @@ describe("FakeAiClient and ephemeral chat states", () => {
       content: "Quais rotinas estão ativas?",
     });
     expect(accepted.run.status).toBe("succeeded");
-    state = reduceEphemeralChatState(state, { type: "message.accepted", accepted });
+    state = reduceEphemeralChatState(state, {
+      type: "message.accepted",
+      accepted,
+    });
 
     const events = await collect(fake.streamRunEvents(auth, accepted.run.id));
     expect(events.map((event) => event.sequence)).toEqual([1, 2, 3]);
@@ -54,12 +59,15 @@ describe("FakeAiClient and ephemeral chat states", () => {
       needsTranscriptRefresh: true,
     });
 
-    const replay = await collect(fake.streamRunEvents(auth, accepted.run.id, 1));
+    const replay = await collect(
+      fake.streamRunEvents(auth, accepted.run.id, 1),
+    );
     expect(replay.map((event) => event.sequence)).toEqual([2, 3]);
-    expect((await fake.listMessages(auth, chat.id)).items.map((message) => message.role)).toEqual([
-      "user",
-      "assistant",
-    ]);
+    expect(
+      (await fake.listMessages(auth, chat.id)).items.map(
+        (message) => message.role,
+      ),
+    ).toEqual(["user", "assistant"]);
   });
 
   it("models confirmation and reconnect states without letting replay duplicate deltas", async () => {
@@ -83,13 +91,22 @@ describe("FakeAiClient and ephemeral chat states", () => {
       chatId: chat.id,
       messages: [],
     });
-    state = reduceEphemeralChatState(state, { type: "message.accepted", accepted });
-    const initialEvents = await collect(fake.streamRunEvents(auth, accepted.run.id));
+    state = reduceEphemeralChatState(state, {
+      type: "message.accepted",
+      accepted,
+    });
+    const initialEvents = await collect(
+      fake.streamRunEvents(auth, accepted.run.id),
+    );
     state = applyRunEvents(state, initialEvents);
     expect(state.phase).toBe("waiting_confirmation");
-    expect(state.pendingAction?.capability_id).toBe("medications.create-with-routines");
+    expect(state.pendingAction?.capability_id).toBe(
+      "medications.create-with-routines",
+    );
 
-    const disconnected = reduceEphemeralChatState(state, { type: "stream.disconnected" });
+    const disconnected = reduceEphemeralChatState(state, {
+      type: "stream.disconnected",
+    });
     expect(disconnected.phase).toBe("reconnecting");
     const replayed = applyRunEvents(disconnected, initialEvents);
     expect(replayed.assistantDraft).toBe(state.assistantDraft);
@@ -121,9 +138,12 @@ describe("FakeAiClient and ephemeral chat states", () => {
       client_message_id: "00000000-0000-4000-8000-000000000103",
       content: "Mensagem sintética",
     });
-    const challenge = await fake.createWhatsAppLinkChallenge(mutation("link-1"), {
-      locale: "pt-BR",
-    });
+    const challenge = await fake.createWhatsAppLinkChallenge(
+      mutation("link-1"),
+      {
+        locale: "pt-BR",
+      },
+    );
     const link = fake.completeWhatsAppLinkForTest(challenge.challenge_id);
     expect((await fake.listChannelLinks(auth)).items).toEqual([link]);
 
@@ -138,15 +158,22 @@ describe("FakeAiClient and ephemeral chat states", () => {
       type: "handoff.started",
       capabilityId: "profile.upload-photo",
     });
-    state = reduceEphemeralChatState(state, { type: "handoff.awaiting_return" });
+    state = reduceEphemeralChatState(state, {
+      type: "handoff.awaiting_return",
+    });
     expect(state).toMatchObject({
       phase: "handoff",
-      handoff: { status: "awaiting_return", capabilityId: "profile.upload-photo" },
+      handoff: {
+        status: "awaiting_return",
+        capabilityId: "profile.upload-photo",
+      },
     });
     state = reduceEphemeralChatState(state, { type: "handoff.completed" });
     expect(state.handoff.status).toBe("completed");
 
-    expect((await fake.revokeChannelLink(mutation("revoke-1"), link.id)).status).toBe("revoked");
+    expect(
+      (await fake.revokeChannelLink(mutation("revoke-1"), link.id)).status,
+    ).toBe("revoked");
   });
 
   it("keeps fake resources owner-scoped", async () => {
@@ -155,7 +182,9 @@ describe("FakeAiClient and ephemeral chat states", () => {
       patient_selection_ref: "self",
     });
 
-    await expect(fake.getChat({ accessToken: "fake-user-bob" }, chat.id)).rejects.toMatchObject({
+    await expect(
+      fake.getChat({ accessToken: "fake-user-bob" }, chat.id),
+    ).rejects.toMatchObject({
       code: "not_found",
       status: 404,
     });

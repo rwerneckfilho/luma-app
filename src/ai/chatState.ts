@@ -1,4 +1,9 @@
-import type { AcceptedMessage, Message, PendingAction, RunEvent } from "./contracts";
+import type {
+  AcceptedMessage,
+  Message,
+  PendingAction,
+  RunEvent,
+} from "./contracts";
 
 export type ChatSurfacePhase =
   | "idle"
@@ -61,8 +66,14 @@ export type ChatStateEvent =
   | { type: "failed"; errorCode: string }
   | { type: "reset" };
 
-function reduceRunEvent(state: EphemeralChatState, event: RunEvent): EphemeralChatState {
-  if (state.activeRunId !== event.run_id || event.sequence <= state.lastEventId) {
+function reduceRunEvent(
+  state: EphemeralChatState,
+  event: RunEvent,
+): EphemeralChatState {
+  if (
+    state.activeRunId !== event.run_id ||
+    event.sequence <= state.lastEventId
+  ) {
     return state;
   }
 
@@ -154,16 +165,21 @@ export function reduceEphemeralChatState(
           }
         : state;
     case "handoff.completed":
-      return state.handoff.status === "opening" || state.handoff.status === "awaiting_return"
+      return state.handoff.status === "opening" ||
+        state.handoff.status === "awaiting_return"
         ? {
             ...state,
             phase: state.messages.length > 0 ? "ready" : "empty",
-            handoff: { status: "completed", capabilityId: state.handoff.capabilityId },
+            handoff: {
+              status: "completed",
+              capabilityId: state.handoff.capabilityId,
+            },
             needsTranscriptRefresh: true,
           }
         : state;
     case "handoff.failed":
-      return state.handoff.status === "opening" || state.handoff.status === "awaiting_return"
+      return state.handoff.status === "opening" ||
+        state.handoff.status === "awaiting_return"
         ? {
             ...state,
             phase: "error",

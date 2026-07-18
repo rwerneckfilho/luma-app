@@ -147,11 +147,19 @@ export interface AiPublicClient {
   ): Promise<Chat>;
   listChats(context: AuthContext, status?: ChatStatus): Promise<ChatPage>;
   getChat(context: AuthContext, chatId: string): Promise<Chat>;
-  listMessages(context: AuthContext, chatId: string, cursor?: string): Promise<MessagePage>;
+  listMessages(
+    context: AuthContext,
+    chatId: string,
+    cursor?: string,
+  ): Promise<MessagePage>;
   createMessage(
     context: AuthContext,
     chatId: string,
-    request: { client_message_id: string; content: string; attachment_refs?: string[] },
+    request: {
+      client_message_id: string;
+      content: string;
+      attachment_refs?: string[];
+    },
   ): Promise<AcceptedMessage>;
   getRun(context: AuthContext, runId: string): Promise<Run>;
   streamRunEvents(
@@ -174,6 +182,9 @@ export interface AiPublicClient {
     },
   ): Promise<LinkChallenge>;
   listChannelLinks(context: AuthContext): Promise<ChannelLinkPage>;
-  revokeChannelLink(context: MutationContext, linkId: string): Promise<ChannelLink>;
+  revokeChannelLink(
+    context: MutationContext,
+    linkId: string,
+  ): Promise<ChannelLink>;
   exportChat(context: AuthContext, chatId: string): Promise<ChatExport>;
 }
