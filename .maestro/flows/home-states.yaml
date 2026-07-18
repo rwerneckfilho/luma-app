@@ -1,0 +1,27 @@
+# Requires an authenticated QA account seeded with the equivalent of
+# homeVisualFixtures.bulkEleven (11 due/overdue, markable scheduled doses).
+appId: life.myluma.app
+name: Home - bulk medication confirmation
+---
+- launchApp
+- assertVisible:
+    id: home-bulk-mark-taken
+- tapOn:
+    id: home-bulk-mark-taken
+- assertVisible:
+    id: bulk-dose-sheet
+- assertVisible:
+    id: bulk-dose-list
+- assertVisible: "11 de 11 doses selecionadas"
+- tapOn:
+    id: "bulk-dose-toggle-.*"
+    index: 0
+- assertVisible: "10 de 11 doses selecionadas"
+- scrollUntilVisible:
+    element:
+      id: bulk-dose-confirm
+    direction: DOWN
+- tapOn:
+    id: bulk-dose-confirm
+- assertNotVisible:
+    id: bulk-dose-sheet

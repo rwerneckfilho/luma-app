@@ -76,17 +76,30 @@ export function Field({ error, label, ...props }: TextInputProps & { error?: str
 }
 
 type ButtonProps = PropsWithChildren<{
+  accessibilityLabel?: string;
   danger?: boolean;
   disabled?: boolean;
   loading?: boolean;
   onPress?: () => void;
   secondary?: boolean;
+  testID?: string;
 }>;
 
-export function Button({ children, danger, disabled, loading, onPress, secondary }: ButtonProps) {
+export function Button({
+  accessibilityLabel,
+  children,
+  danger,
+  disabled,
+  loading,
+  onPress,
+  secondary,
+  testID,
+}: ButtonProps) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ busy: loading, disabled: disabled || loading }}
       disabled={disabled || loading}
       onPress={onPress}
       style={({ pressed }) => [
@@ -96,6 +109,7 @@ export function Button({ children, danger, disabled, loading, onPress, secondary
         (disabled || loading) && styles.buttonDisabled,
         pressed && styles.buttonPressed,
       ]}
+      testID={testID}
     >
       {loading ? (
         <ActivityIndicator color={secondary ? colors.primary : colors.surface} />
@@ -106,9 +120,26 @@ export function Button({ children, danger, disabled, loading, onPress, secondary
   );
 }
 
-export function IconButton({ label, onPress }: { label: string; onPress: () => void }) {
+export function IconButton({
+  disabled,
+  label,
+  onPress,
+  testID,
+}: {
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+  testID?: string;
+}) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.iconButton}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.iconButton, disabled && styles.buttonDisabled]}
+      testID={testID}
+    >
       <Text style={styles.iconButtonText}>{label}</Text>
     </Pressable>
   );
@@ -148,25 +179,35 @@ export function Choice<T extends string>({
 }
 
 export function ToggleRow({
+  accessibilityLabel,
   description,
+  disabled,
   label,
   onValueChange,
+  testID,
   value,
 }: {
+  accessibilityLabel?: string;
   description?: string;
+  disabled?: boolean;
   label: string;
   onValueChange: (value: boolean) => void;
+  testID?: string;
   value: boolean;
 }) {
   return (
-    <View style={styles.toggleRow}>
+    <View style={[styles.toggleRow, disabled && styles.buttonDisabled]}>
       <View style={styles.toggleCopy}>
         <Text style={styles.label}>{label}</Text>
         {description ? <Text style={styles.muted}>{description}</Text> : null}
       </View>
       <Switch
-        accessibilityLabel={label}
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        hitSlop={8}
         onValueChange={onValueChange}
+        testID={testID}
         thumbColor={colors.surface}
         trackColor={{ false: colors.border, true: colors.primary }}
         value={value}
@@ -177,22 +218,46 @@ export function ToggleRow({
 
 export function Sheet({
   children,
+  closeDisabled,
+  closeLabel = "Fechar",
   onClose,
+  testID,
   title,
   visible,
-}: PropsWithChildren<{ onClose: () => void; title: string; visible: boolean }>) {
+}: PropsWithChildren<{
+  closeDisabled?: boolean;
+  closeLabel?: string;
+  onClose: () => void;
+  testID?: string;
+  title: string;
+  visible: boolean;
+}>) {
   return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
-      <SafeAreaView style={styles.safe}>
+    <Modal
+      animationType="slide"
+      onRequestClose={closeDisabled ? () => undefined : onClose}
+      presentationStyle="pageSheet"
+      visible={visible}
+    >
+      <SafeAreaView accessibilityViewIsModal style={styles.safe} testID={testID}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.sheet}
         >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
-            <IconButton label="Fechar" onPress={onClose} />
+            <IconButton
+              disabled={closeDisabled}
+              label={closeLabel}
+              onPress={onClose}
+              testID={testID ? `${testID}-close` : undefined}
+            />
           </View>
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             {children}
           </ScrollView>
         </KeyboardAvoidingView>
@@ -268,9 +333,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   chip: {
+    alignItems: "center",
     borderColor: colors.border,
     borderRadius: radii.pill,
     borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 48,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -280,7 +348,14 @@ const styles = StyleSheet.create({
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   errorText: { color: colors.danger, fontFamily: fonts.body, fontSize: 13 },
   fieldWrap: { gap: spacing.sm },
-  iconButton: { paddingHorizontal: spacing.sm, paddingVertical: spacing.md },
+  iconButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+  },
   iconButtonText: { color: colors.primary, fontFamily: fonts.body, fontWeight: "700" },
   input: {
     backgroundColor: colors.surface,
@@ -316,5 +391,10 @@ const styles = StyleSheet.create({
   textarea: { minHeight: 96, textAlignVertical: "top" },
   title: { color: colors.ink, fontFamily: fonts.heading, fontSize: 30, fontWeight: "800" },
   toggleCopy: { flex: 1, gap: spacing.xs },
-  toggleRow: { alignItems: "center", flexDirection: "row", gap: spacing.lg },
+  toggleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.lg,
+    minHeight: 56,
+  },
 });

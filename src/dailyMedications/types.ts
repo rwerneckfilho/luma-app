@@ -51,6 +51,37 @@ export type MarkDoseTakenPayload = {
   taken_at?: string | null;
 };
 
+type BulkMarkDoseTakenBase = {
+  client_request_id?: string;
+  event_ids: string[];
+};
+
+export type BulkMarkDoseTakenPayload = BulkMarkDoseTakenBase & (
+  | { mode: "manual"; taken_at: string }
+  | { mode: "now" | "on_time"; taken_at?: never }
+);
+
+export type BulkMarkDoseTakenStatus =
+  | "marked"
+  | "already_taken"
+  | "already_skipped"
+  | "not_due"
+  | "not_found";
+
+export type BulkMarkDoseTakenResult = {
+  event_id: string;
+  item: DailyMedicationItem | null;
+  status: BulkMarkDoseTakenStatus;
+};
+
+export type BulkMarkDoseTakenResponse = {
+  already_taken: number;
+  marked: number;
+  not_applied: number;
+  requested: number;
+  results: BulkMarkDoseTakenResult[];
+};
+
 export type SkipDosePayload = {
   acknowledge_early?: boolean;
 };

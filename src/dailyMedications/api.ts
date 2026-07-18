@@ -1,17 +1,19 @@
 /**
  * AI_CONTEXT
- * repo: luma-front-webapp
+ * repo: luma-app
  * layer: api-client
  * domain: daily-medications
  * purpose: luma-core API wrapper for Home dashboard and dose state transitions.
  * entrypoints:
  *   - getDailyMedications
  *   - markDoseTaken
+ *   - markDosesTakenBatch
  *   - skipDose
  * reads:
  *   - /v1/me/daily-medications
  * mutates:
  *   - /v1/me/daily-medications/:eventId/taken
+ *   - /v1/me/daily-medications/taken-batch
  *   - /v1/me/daily-medications/:eventId/skipped
  * used_by:
  *   - src/dailyMedications/hooks.ts
@@ -23,7 +25,10 @@
  *   - All requests require a current Supabase access token.
  */
 import { apiRequest, requireAccessToken } from "../lib/apiClient";
+import { aggregateBulkMarkDoseTakenResponses } from "./dailyMedicationUtils";
 import type {
+  BulkMarkDoseTakenPayload,
+  BulkMarkDoseTakenResponse,
   DailyMedicationDashboard,
   MarkDoseTakenPayload,
   SkipDosePayload,
@@ -60,6 +65,31 @@ export function markDoseTaken(
     body: payload,
     method: "POST",
   });
+}
+
+export function markDosesTakenBatch(
+  accessToken: string | null | undefined,
+  payload: BulkMarkDoseTakenPayload,
+) {
+  return apiRequest<BulkMarkDoseTakenResponse>(
+    "/v1/me/daily-medications/taken-batch",
+    {
+      accessToken: requireAccessToken(accessToken),
+      body: payload,
+      method: "POST",
+    },
+  );
+}
+
+export async function markDosesTakenBatches(
+  accessToken: string | null | undefined,
+  payloads: BulkMarkDoseTakenPayload[],
+) {
+  const responses: BulkMarkDoseTakenResponse[] = [];
+  for (const payload of payloads) {
+    responses.push(await markDosesTakenBatch(accessToken, payload));
+  }
+  return aggregateBulkMarkDoseTakenResponses(responses);
 }
 
 export function skipDose(

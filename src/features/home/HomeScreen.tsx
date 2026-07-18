@@ -43,6 +43,8 @@ import {
   nativeStyles,
 } from "../shared/native";
 import { buildPrnUsagePayload, type PrnUsageMode } from "./prnUsageUtils";
+import { BulkDoseActionSheet } from "./BulkDoseActionSheet";
+import { getHomeBulkMarkableItems } from "./homeUtils";
 
 type DoseSheetState = {
   acknowledgeEarly: boolean;
@@ -62,8 +64,13 @@ export function HomeScreen() {
   const routines = useRoutines();
   const medications = useMedications();
   const [doseSheet, setDoseSheet] = useState<DoseSheetState | null>(null);
+  const [bulkSheetOpen, setBulkSheetOpen] = useState(false);
   const [prnSelection, setPrnSelection] = useState<PrnSheetState>(null);
   const locale = i18n.resolvedLanguage ?? "pt-BR";
+  const bulkMarkableItems = useMemo(
+    () => getHomeBulkMarkableItems(dashboard.data?.items ?? []),
+    [dashboard.data?.items],
+  );
   const prnItems = useMemo(
     () => (routines.data ?? [])
       .filter((routine) =>
@@ -157,17 +164,30 @@ export function HomeScreen() {
                 title={t("home.noMedicationsScheduledToday")}
               />
             ) : (
-              dashboard.data.items.map((item) => (
-                <DoseCard
-                  item={item}
-                  key={item.event_id}
-                  locale={locale}
-                  onSkip={() => openDoseAction(item, "skip")}
-                  onTaken={() => openDoseAction(item, "taken")}
-                  serverNow={dashboard.data.server_now}
-                  timezone={dashboard.data.timezone}
-                />
-              ))
+              <>
+                {bulkMarkableItems.length >= 2 ? (
+                  <Button
+                    accessibilityLabel={t("home.bulkCtaAccessibility", {
+                      count: bulkMarkableItems.length,
+                    })}
+                    onPress={() => setBulkSheetOpen(true)}
+                    testID="home-bulk-mark-taken"
+                  >
+                    {t("home.bulkCta", { count: bulkMarkableItems.length })}
+                  </Button>
+                ) : null}
+                {dashboard.data.items.map((item) => (
+                  <DoseCard
+                    item={item}
+                    key={item.event_id}
+                    locale={locale}
+                    onSkip={() => openDoseAction(item, "skip")}
+                    onTaken={() => openDoseAction(item, "taken")}
+                    serverNow={dashboard.data.server_now}
+                    timezone={dashboard.data.timezone}
+                  />
+                ))}
+              </>
             )}
           </Section>
         </>
@@ -198,6 +218,17 @@ export function HomeScreen() {
           onClose={() => setDoseSheet(null)}
           state={doseSheet}
           timezone={dashboard.data?.timezone}
+        />
+      ) : null}
+      {bulkSheetOpen && dashboard.data ? (
+        <BulkDoseActionSheet
+          dashboardDate={dashboard.data.date}
+          dashboardNow={dashboard.data.server_now}
+          items={bulkMarkableItems}
+          key={bulkMarkableItems.map((item) => item.event_id).join(":")}
+          locale={locale}
+          onClose={() => setBulkSheetOpen(false)}
+          timezone={dashboard.data.timezone}
         />
       ) : null}
       <PrnUsageSheet

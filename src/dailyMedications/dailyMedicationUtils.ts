@@ -1,19 +1,22 @@
 /**
  * AI_CONTEXT
- * repo: luma-front-webapp
+ * repo: luma-app
  * layer: service
  * domain: daily-medications
  * purpose: Pure date, status, progress, and payload helpers for daily medication UI.
  * entrypoints:
  *   - canMarkDoseTaken
  *   - canSkipDose
+ *   - getBulkMarkableMedicationItems
+ *   - getCommonTakenModes
+ *   - buildBulkMarkDoseTakenPayload
  *   - buildManualTakenAt
  * reads:
  *   - DailyMedicationItem
  * mutates:
  *   - none
  * used_by:
- *   - src/home/*
+ *   - src/features/home/*
  * read_first_when:
  *   - Changing Home action availability or local datetime formatting.
  * avoid_reading_when:
@@ -23,6 +26,8 @@
  */
 import type { TFunction } from "i18next";
 import type {
+  BulkMarkDoseTakenPayload,
+  BulkMarkDoseTakenResponse,
   DailyMedicationItem,
   DailyMedicationStatus,
   TakenMode,
@@ -94,6 +99,88 @@ export function canSkipDose(item: DailyMedicationItem) {
   }
 
   return item.status === "due" || item.status === "overdue";
+}
+
+export function getBulkMarkableMedicationItems(items: DailyMedicationItem[]) {
+  return items.filter(
+    (item) =>
+      item.treatment_type !== "as_needed" &&
+      (item.status === "due" || item.status === "overdue") &&
+      canMarkDoseTaken(item),
+  );
+}
+
+export function getCommonTakenModes(items: DailyMedicationItem[]): TakenMode[] {
+  if (items.length === 0) return [];
+
+  const canonicalOrder: TakenMode[] = ["on_time", "now", "manual"];
+  return canonicalOrder.filter((mode) =>
+    items.every((item) => item.allowed_taken_options.includes(mode)),
+  );
+}
+
+export function buildBulkMarkDoseTakenPayload({
+  clientRequestId,
+  eventIds,
+  mode,
+  takenAt,
+}: {
+  clientRequestId?: string;
+  eventIds: string[];
+  mode: TakenMode;
+  takenAt?: string | null;
+}): BulkMarkDoseTakenPayload | null {
+  const uniqueEventIds = [...new Set(eventIds)];
+  if (
+    uniqueEventIds.length < 1 ||
+    uniqueEventIds.length > 100 ||
+    uniqueEventIds.length !== eventIds.length ||
+    uniqueEventIds.some((eventId) => !isUuid(eventId)) ||
+    (clientRequestId != null && !isUuid(clientRequestId))
+  ) {
+    return null;
+  }
+
+  if (mode === "manual") {
+    if (!takenAt) return null;
+    return {
+      ...(clientRequestId ? { client_request_id: clientRequestId } : {}),
+      event_ids: uniqueEventIds,
+      mode,
+      taken_at: takenAt,
+    };
+  }
+
+  return {
+    ...(clientRequestId ? { client_request_id: clientRequestId } : {}),
+    event_ids: uniqueEventIds,
+    mode,
+  };
+}
+
+export function chunkBulkEventIds(eventIds: string[], chunkSize = 100) {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > 100) {
+    return [];
+  }
+  return Array.from(
+    { length: Math.ceil(eventIds.length / chunkSize) },
+    (_, index) => eventIds.slice(index * chunkSize, (index + 1) * chunkSize),
+  );
+}
+
+export function aggregateBulkMarkDoseTakenResponses(
+  responses: BulkMarkDoseTakenResponse[],
+): BulkMarkDoseTakenResponse {
+  return responses.reduce<BulkMarkDoseTakenResponse>(
+    (aggregate, response) => ({
+      already_taken: aggregate.already_taken + response.already_taken,
+      marked: aggregate.marked + response.marked,
+      not_applied: aggregate.not_applied + response.not_applied,
+      requested: aggregate.requested + response.requested,
+      results: [...aggregate.results, ...response.results],
+    }),
+    { already_taken: 0, marked: 0, not_applied: 0, requested: 0, results: [] },
+  );
 }
 
 export function getTreatmentTypeLabelKey(treatmentType: DailyMedicationItem["treatment_type"]) {
@@ -220,4 +307,10 @@ function formatOffset(offsetMillis: number) {
   const minutes = absoluteMinutes % 60;
 
   return `${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }
