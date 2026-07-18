@@ -1,56 +1,76 @@
-# Welcome to your Expo app 👋
+# LUMA App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicativo nativo da LUMA para iOS e Android, construído com Expo SDK 56 e React Native. Este projeto não é uma PWA nem encapsula o webapp em WebView.
 
-## Get started
+## Arquitetura
 
-1. Install dependencies
+O aplicativo mantém a divisão já existente na plataforma:
 
-   ```bash
-   npm install
-   ```
+- `luma-core` (FastAPI) é o backend de domínio e a API consumida pelo app;
+- Supabase fornece Auth, Storage e PostgreSQL, mas não substitui o backend;
+- `luma-notifications` planeja e envia WhatsApp, Web Push e Expo Push;
+- `luma-front-webapp` continua sendo o cliente web e a referência de paridade funcional.
 
-2. Start the app
+O app usa Supabase diretamente apenas para sessão de autenticação e foto privada de perfil. Medicamentos, rotinas, histórico, relações de cuidado, preferências e ações de dose passam pelo `luma-core` com o JWT Supabase.
 
-   ```bash
-   npx expo start
-   ```
+## Configuração local
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Requisitos: Node.js compatível com Expo SDK 56, Xcode para iOS e/ou Android Studio para Android.
 
 ```bash
-npm run reset-project
+cp .env.example .env
+npm install
+npm run ios
+# ou
+npm run android
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Variáveis públicas obrigatórias:
 
-### Other setup steps
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `EXPO_PUBLIC_API_BASE_URL`
+- `EXPO_PUBLIC_EAS_PROJECT_ID` para Expo Push em builds reais
+- `EXPO_PUBLIC_AUTH_REDIRECT_URL`, normalmente `luma://auth/update-password`
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Em desenvolvimento, o backend usa `http://localhost:8000` no iOS e `http://10.0.2.2:8000` no emulador Android quando `EXPO_PUBLIC_API_BASE_URL` não está definido.
 
-## Learn more
+## Notificações nativas
 
-To learn more about developing your project with Expo, look at the following resources:
+O app registra cada instalação em `POST /v1/me/native-push-subscriptions`. O token Expo fica sob controle do backend e não é devolvido pelas respostas públicas.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Lembretes normais e atrasados usam:
 
-## Join the community
+- categoria `luma_medication_actions`;
+- canal Android `medication_reminders` com importância alta;
+- ações `MARK_TAKEN` e `SKIP_DOSE` na tela bloqueada;
+- tokens opacos, distintos, de uso único para `POST /v1/push-actions/taken` e `/skipped`;
+- deep links `luma://home?event_id=...` sem tokens na URL.
 
-Join our community of developers creating universal apps.
+No Android, os botões são processados por uma task nativa mesmo com o app em segundo plano ou encerrado, sem exigir que a tela do app seja aberta. No iOS, os botões continuam disponíveis na tela bloqueada e abrem o app para concluir a ação, pois o Expo não entrega taps de ações interativas a uma task encerrada nessa plataforma.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Ao sair da conta ou remover o dispositivo, a assinatura é desativada, os tokens de ação pendentes expiram, as notificações exibidas são removidas e o registro remoto do sistema operacional é descartado. A remoção explícita também bloqueia o recadastro automático até o usuário ativar o dispositivo novamente.
+
+O serviço consulta os receipts da Expo após a janela recomendada, persiste retries e invalida de forma atômica instalações que retornarem `DeviceNotRegistered`.
+
+Para entrega real, ainda é necessário configurar o projeto EAS, credenciais APNs e FCM v1, aplicar as migrations nativas no banco e ativar Expo Push no serviço de notificações.
+
+## Validação
+
+```bash
+npm run typecheck
+npm test
+npm run lint
+npx expo install --check
+npx expo config --type public
+```
+
+Builds usam os perfis de `eas.json`:
+
+```bash
+npx eas build --profile development --platform ios
+npx eas build --profile development --platform android
+npx eas build --profile production --platform all
+```
+
+Consulte [FEATURE_PARITY.md](./FEATURE_PARITY.md) para o mapa entre o webapp e as telas nativas.
