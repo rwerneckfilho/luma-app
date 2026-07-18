@@ -9,6 +9,7 @@ import {
   consumeRunEvents,
   listCompleteChats,
   listCompleteTranscript,
+  submitActionDecision,
 } from "./chatSession";
 import {
   initialEphemeralChatState,
@@ -152,5 +153,71 @@ describe("native chat session orchestration", () => {
     await expect(listCompleteChats(client, auth, "active")).rejects.toThrow(
       "chat_cursor_cycle",
     );
+  });
+
+  it("submits only the exact server-bound action proof and rejects confused responses", async () => {
+    const action = {
+      action_id: "00000000-0000-4000-8000-000000000904",
+      capability_id: "medications.create-with-routines",
+      confirmation_ref: "opaque-confirmation-reference",
+      expires_at: "2026-07-18T15:10:00.000Z",
+      presented_preview_hash: "1".repeat(64),
+      preview: {},
+    };
+    const decideAction = jest.fn(async () => ({
+      id: action.action_id,
+      chat_id: "00000000-0000-4000-8000-000000000905",
+      capability_id: action.capability_id,
+      confirmation_ref: action.confirmation_ref,
+      expires_at: action.expires_at,
+      presented_preview_hash: action.presented_preview_hash,
+      status: "executing" as const,
+    }));
+    const context = {
+      ...auth,
+      idempotencyKey: "00000000-0000-4000-8000-000000000906",
+    };
+
+    await expect(
+      submitActionDecision({
+        action,
+        chatId: "00000000-0000-4000-8000-000000000905",
+        client: { decideAction } as unknown as AiPublicClient,
+        context,
+        decision: "confirm",
+      }),
+    ).resolves.toMatchObject({ status: "executing" });
+    expect(decideAction).toHaveBeenCalledWith(
+      context,
+      "00000000-0000-4000-8000-000000000905",
+      action.action_id,
+      "confirm",
+      {
+        confirmation_ref: action.confirmation_ref,
+        presented_preview_hash: action.presented_preview_hash,
+      },
+    );
+
+    decideAction.mockResolvedValueOnce({
+      id: action.action_id,
+      chat_id: "00000000-0000-4000-8000-000000000999",
+      capability_id: action.capability_id,
+      confirmation_ref: action.confirmation_ref,
+      expires_at: action.expires_at,
+      presented_preview_hash: action.presented_preview_hash,
+      status: "executing",
+    });
+    await expect(
+      submitActionDecision({
+        action,
+        chatId: "00000000-0000-4000-8000-000000000905",
+        client: { decideAction } as unknown as AiPublicClient,
+        context,
+        decision: "confirm",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_contract_response",
+      status: 502,
+    });
   });
 });

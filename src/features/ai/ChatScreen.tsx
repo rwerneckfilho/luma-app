@@ -22,6 +22,7 @@ import {
 } from "../../ai";
 import { colors, fonts, radii, spacing } from "../../design/theme";
 import { Button, StateMessage } from "../shared/native";
+import { ActionConfirmationCard } from "./ActionConfirmationCard";
 
 const MESSAGE_LIMIT = 16_000;
 
@@ -57,7 +58,8 @@ export function ChatScreen() {
     : (params.chatId ?? "");
   const runtime = useAiRuntime();
   const chat = useAiChat(chatId);
-  const { reload, retry, send, state } = useAiChatSession(chatId);
+  const { actionDecision, decideAction, reload, retry, send, state } =
+    useAiChatSession(chatId);
   const [draft, setDraft] = useState("");
   const list = useRef<FlatList<Message>>(null);
   const composerEnabled = state.phase === "empty" || state.phase === "ready";
@@ -197,15 +199,13 @@ export function ChatScreen() {
                     {t("ai.reconnecting")}
                   </Text>
                 ) : null}
-                {state.phase === "waiting_confirmation" ? (
-                  <View style={styles.confirmationCard}>
-                    <Text style={styles.confirmationTitle}>
-                      {t("ai.confirmationPendingTitle")}
-                    </Text>
-                    <Text style={styles.stateCopy}>
-                      {t("ai.confirmationPendingBody")}
-                    </Text>
-                  </View>
+                {state.phase === "waiting_confirmation" &&
+                state.pendingAction ? (
+                  <ActionConfirmationCard
+                    action={state.pendingAction}
+                    decisionState={actionDecision}
+                    onDecision={decideAction}
+                  />
                 ) : null}
                 {state.phase === "error" ? (
                   <View style={styles.inlineError}>
@@ -297,18 +297,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.sm,
     padding: spacing.md,
-  },
-  confirmationCard: {
-    backgroundColor: colors.warningSoft,
-    borderRadius: radii.md,
-    gap: spacing.sm,
-    padding: spacing.lg,
-  },
-  confirmationTitle: {
-    color: colors.ink,
-    fontFamily: fonts.heading,
-    fontSize: 16,
-    fontWeight: "700",
   },
   connectionText: {
     color: colors.muted,

@@ -1,9 +1,13 @@
 import type {
+  ActionStatus,
   AiPublicClient,
   AuthContext,
   Chat,
+  ChatAction,
   ChatStatus,
   Message,
+  MutationContext,
+  PendingAction,
   RunEvent,
   RunStatus,
 } from "./contracts";
@@ -25,6 +29,55 @@ export type RunConsumptionResult = {
   lastEventId: number;
   outcome: RunConsumptionOutcome;
 };
+
+const ACCEPTED_ACTION_STATUSES: Record<"confirm" | "cancel", Set<ActionStatus>> = {
+  cancel: new Set(["cancelled"]),
+  confirm: new Set(["executing", "succeeded"]),
+};
+
+function invalidContractResponse() {
+  return Object.assign(new Error("invalid_contract_response"), {
+    code: "invalid_contract_response",
+    status: 502,
+  });
+}
+
+/** Submit only the opaque proof attached to the exact server-presented action. */
+export async function submitActionDecision({
+  action,
+  chatId,
+  client,
+  context,
+  decision,
+}: {
+  action: PendingAction;
+  chatId: string;
+  client: AiPublicClient;
+  context: MutationContext;
+  decision: "confirm" | "cancel";
+}): Promise<ChatAction> {
+  const result = await client.decideAction(
+    context,
+    chatId,
+    action.action_id,
+    decision,
+    {
+      confirmation_ref: action.confirmation_ref,
+      presented_preview_hash: action.presented_preview_hash,
+    },
+  );
+  if (
+    result.id !== action.action_id ||
+    result.chat_id !== chatId ||
+    result.capability_id !== action.capability_id ||
+    result.confirmation_ref !== action.confirmation_ref ||
+    result.presented_preview_hash !== action.presented_preview_hash ||
+    !ACCEPTED_ACTION_STATUSES[decision].has(result.status)
+  ) {
+    throw invalidContractResponse();
+  }
+  return result;
+}
 
 type ErrorShape = { code?: unknown; name?: unknown; status?: unknown };
 

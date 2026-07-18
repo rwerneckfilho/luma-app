@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { AppState } from "react-native";
 import type { Chat, ChatStatus } from "./contracts";
 import {
@@ -8,6 +8,7 @@ import {
   isAbortError,
   listCompleteChats,
   listCompleteTranscript,
+  submitActionDecision,
 } from "./chatSession";
 import {
   initialEphemeralChatState,
@@ -119,6 +120,13 @@ export function useAiChatSession(chatId: string) {
   const activeRequest = useRef<AbortController | null>(null);
   const operation = useRef(0);
   const submitting = useRef(false);
+  const deciding = useRef(false);
+  const decisionKeys = useRef(new Map<string, string>());
+  const [actionDecision, setActionDecision] = useState<{
+    decision: "confirm" | "cancel" | null;
+    errorCode: string | null;
+    status: "idle" | "submitting" | "accepted" | "failed";
+  }>({ decision: null, errorCode: null, status: "idle" });
   const stateRef = useRef(state);
   const loadTranscriptRef = useRef<(showLoading?: boolean) => Promise<void>>(
     async () => undefined,
@@ -128,6 +136,11 @@ export function useAiChatSession(chatId: string) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    deciding.current = false;
+    setActionDecision({ decision: null, errorCode: null, status: "idle" });
+  }, [state.pendingAction?.action_id]);
 
   const beginOperation = useCallback(() => {
     operation.current += 1;
@@ -279,6 +292,79 @@ export function useAiChatSession(chatId: string) {
     runtime.isReady,
   ]);
 
+  const decideAction = useCallback(
+    async (decision: "confirm" | "cancel") => {
+      const snapshot = stateRef.current;
+      const action = snapshot.pendingAction;
+      const runId = snapshot.activeRunId;
+      if (
+        !runtime.isReady ||
+        !action ||
+        !runId ||
+        snapshot.phase !== "waiting_confirmation" ||
+        deciding.current
+      ) {
+        return false;
+      }
+      deciding.current = true;
+      setActionDecision({ decision, errorCode: null, status: "submitting" });
+      const current = beginOperation();
+      const keyId = `${action.action_id}:${decision}`;
+      let idempotencyKey = decisionKeys.current.get(keyId);
+      if (!idempotencyKey) {
+        idempotencyKey = createClientRequestId();
+        decisionKeys.current.set(keyId, idempotencyKey);
+      }
+      try {
+        await submitActionDecision({
+          action,
+          chatId,
+          client: requireClient(runtime),
+          context: runtime.mutationContext(
+            idempotencyKey,
+            current.controller.signal,
+          ),
+          decision,
+        });
+        if (
+          current.id !== operation.current ||
+          current.controller.signal.aborted
+        ) {
+          return false;
+        }
+        setActionDecision({ decision, errorCode: null, status: "accepted" });
+        const result = await consume(
+          runId,
+          snapshot.lastEventId,
+          current.controller,
+        );
+        if (
+          result.outcome === "completed" &&
+          current.id === operation.current
+        ) {
+          await loadTranscript(false);
+          void queryClient.invalidateQueries({ queryKey: aiQueryKeys.all });
+        }
+        return true;
+      } catch (error) {
+        if (current.id !== operation.current || isAbortError(error)) return false;
+        const code = aiUiErrorCode(error);
+        if (code === "access_changed") dispatch({ type: "access.changed" });
+        setActionDecision({ decision, errorCode: code, status: "failed" });
+        return false;
+      } finally {
+        deciding.current = false;
+      }
+    }, [
+      beginOperation,
+      chatId,
+      consume,
+      loadTranscript,
+      queryClient,
+      runtime,
+    ],
+  );
+
   useEffect(() => {
     retryRef.current = retry;
   }, [retry]);
@@ -308,6 +394,8 @@ export function useAiChatSession(chatId: string) {
   }, []);
 
   return {
+    actionDecision,
+    decideAction,
     reload: loadTranscript,
     retry,
     send,

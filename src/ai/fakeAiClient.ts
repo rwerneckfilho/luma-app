@@ -441,6 +441,6 @@ export class FakeAiClient implements AiPublicClient {
   }
 
   private futureTimestamp() {
-    return new Date(Date.UTC(2026, 6, 17, 12, 10, this.sequence)).toISOString();
+    return new Date(Date.UTC(2099, 0, 1, 0, 10, this.sequence)).toISOString();
   }
 }
