@@ -152,12 +152,16 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
   const start = useStartWhatsAppVerification();
   const verify = useVerifyWhatsAppVerification();
   const resend = useResendWhatsAppVerification();
+  const profile = useUserProfile();
   const [challenge, setChallenge] = useState<WhatsAppVerificationStartResponse | null>(null);
   const [token, setToken] = useState("");
-  const { fallbackSeconds, resendSeconds } = useVerificationCountdown(challenge);
+  const [codeRequested, setCodeRequested] = useState(false);
+  const { resendSeconds } = useVerificationCountdown(challenge);
   const begin = async () => {
     try {
-      setChallenge(await start.mutateAsync({ phone_e164: phone, purpose: "onboarding" }));
+      const started = await start.mutateAsync({ phone_e164: phone, purpose: "onboarding" });
+      setChallenge(started);
+      await Linking.openURL(started.fallback_url);
     } catch (error) {
       Alert.alert(t("common.somethingWentWrong"), error instanceof Error ? error.message : "");
     }
@@ -176,28 +180,38 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
     try {
       setChallenge(await resend.mutateAsync({ verification_id: challenge.verification_id }));
       setToken("");
+      setCodeRequested(true);
     } catch (error) {
       Alert.alert(t("common.somethingWentWrong"), error instanceof Error ? error.message : "");
     }
+  };
+  const checkInbound = async () => {
+    const result = await profile.refetch();
+    if (result.data?.whatsapp_delivery_phone_verified_at) onVerified();
+    else Alert.alert(t("whatsappVerification.pendingTitle"), t("whatsappVerification.pendingMessage"));
   };
   return (
     <Card>
       <Text style={styles.heading}>{t("whatsappVerification.title")}</Text>
       <Body>{phone}</Body>
-      {!challenge ? <Button loading={start.isPending} onPress={() => void begin()}>{t("whatsappVerification.verifyNow")}</Button> : (
+      {!challenge ? <Button loading={start.isPending} onPress={() => void begin()}>{t("whatsappVerification.sendMessage")}</Button> : (
         <>
-          <Body muted>{t("whatsappVerification.sent")}</Body>
-          <Field keyboardType="number-pad" label={t("whatsappVerification.codeLabel")} maxLength={4} onChangeText={(value) => setToken(value.replace(/\D/g, "").slice(0, 4))} value={token} />
-          <View style={nativeStyles.actionRow}>
-            <Button disabled={token.length !== 4} loading={verify.isPending} onPress={() => void confirm()}>{t("whatsappVerification.confirm")}</Button>
-            <Button disabled={resendSeconds > 0} loading={resend.isPending} onPress={() => void resendCode()} secondary>
-              {resendSeconds > 0 ? t("whatsappVerification.resendIn", { seconds: resendSeconds }) : t("whatsappVerification.resend")}
-            </Button>
-          </View>
-          {fallbackSeconds > 0 ? (
-            <Body muted>{t("whatsappVerification.fallbackIn", { seconds: fallbackSeconds })}</Body>
+          <Body muted>{t("whatsappVerification.sendMessageInstructions")}</Body>
+          <Button onPress={() => void Linking.openURL(challenge.fallback_url)}>{t("whatsappVerification.openWhatsApp")}</Button>
+          <Button loading={profile.isRefetching} onPress={() => void checkInbound()} secondary>{t("whatsappVerification.messageSent")}</Button>
+          {codeRequested ? (
+            <>
+              <Body muted>{t("whatsappVerification.sent")}</Body>
+              <Field keyboardType="number-pad" label={t("whatsappVerification.codeLabel")} maxLength={4} onChangeText={(value) => setToken(value.replace(/\D/g, "").slice(0, 4))} value={token} />
+              <View style={nativeStyles.actionRow}>
+                <Button disabled={token.length !== 4} loading={verify.isPending} onPress={() => void confirm()}>{t("whatsappVerification.confirm")}</Button>
+                <Button disabled={resendSeconds > 0} loading={resend.isPending} onPress={() => void resendCode()} secondary>
+                  {resendSeconds > 0 ? t("whatsappVerification.resendIn", { seconds: resendSeconds }) : t("whatsappVerification.resend")}
+                </Button>
+              </View>
+            </>
           ) : (
-            <Button onPress={() => void Linking.openURL(challenge.fallback_url)} secondary>{t("whatsappVerification.openWhatsApp")}</Button>
+            <Button loading={resend.isPending} onPress={() => void resendCode()} secondary>{t("whatsappVerification.receiveCode")}</Button>
           )}
         </>
       )}
