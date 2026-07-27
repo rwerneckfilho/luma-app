@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -10,6 +10,7 @@ import {
   useUpdateNotificationPreferences,
   useUserProfile,
   useVerifyWhatsAppVerification,
+  useWhatsAppVerificationStatus,
 } from "../../me/hooks";
 import { useNotifications } from "../../notifications/useNotifications";
 import { useMedications } from "../../medications/hooks";
@@ -20,6 +21,10 @@ import {
 } from "../../care/hooks";
 import type { CarePublicUser } from "../../care/types";
 import type { WhatsAppVerificationStartResponse } from "../../me/types";
+import {
+  getWhatsAppOtpDeliveryFeedback,
+  getWhatsAppVerificationDecision,
+} from "../../me/whatsappVerification";
 import { env } from "../../config/env";
 import { colors, spacing } from "../../design/theme";
 import { Body, Button, Card, Choice, Field, Screen, StateMessage, nativeStyles } from "../shared/native";
@@ -157,6 +162,30 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
   const [token, setToken] = useState("");
   const [codeRequested, setCodeRequested] = useState(false);
   const { resendSeconds } = useVerificationCountdown(challenge);
+  const verificationStatus = useWhatsAppVerificationStatus(
+    challenge ? "onboarding" : undefined,
+    challenge?.verification_id,
+  );
+  const verificationDecision = getWhatsAppVerificationDecision(
+    verificationStatus.data,
+    challenge?.verification_id,
+  );
+
+  useEffect(() => {
+    if (verificationDecision === "waiting") return;
+    setChallenge(null);
+    setToken("");
+    setCodeRequested(false);
+    if (verificationDecision === "verified") {
+      onVerified();
+      return;
+    }
+    Alert.alert(
+      t("whatsappVerification.challengeEndedTitle"),
+      t("whatsappVerification.challengeEndedMessage"),
+    );
+  }, [onVerified, t, verificationDecision]);
+
   const begin = async () => {
     try {
       const started = await start.mutateAsync({ phone_e164: phone, purpose: "onboarding" });
@@ -201,7 +230,13 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
           <Button loading={profile.isRefetching} onPress={() => void checkInbound()} secondary>{t("whatsappVerification.messageSent")}</Button>
           {codeRequested ? (
             <>
-              <Body muted>{t("whatsappVerification.sent")}</Body>
+              <Body muted>
+                {t(
+                  getWhatsAppOtpDeliveryFeedback(challenge.delivery_status) === "sent"
+                    ? "whatsappVerification.sent"
+                    : "whatsappVerification.deliveryUnknown",
+                )}
+              </Body>
               <Field keyboardType="number-pad" label={t("whatsappVerification.codeLabel")} maxLength={4} onChangeText={(value) => setToken(value.replace(/\D/g, "").slice(0, 4))} value={token} />
               <View style={nativeStyles.actionRow}>
                 <Button disabled={token.length !== 4} loading={verify.isPending} onPress={() => void confirm()}>{t("whatsappVerification.confirm")}</Button>
@@ -211,7 +246,16 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
               </View>
             </>
           ) : (
-            <Button loading={resend.isPending} onPress={() => void resendCode()} secondary>{t("whatsappVerification.receiveCode")}</Button>
+            <Button
+              disabled={resendSeconds > 0}
+              loading={resend.isPending}
+              onPress={() => void resendCode()}
+              secondary
+            >
+              {resendSeconds > 0
+                ? t("whatsappVerification.resendIn", { seconds: resendSeconds })
+                : t("whatsappVerification.receiveCode")}
+            </Button>
           )}
         </>
       )}

@@ -32,6 +32,7 @@ import type {
   UserProfile,
   UserProfileUpdate,
   WhatsAppVerificationStartResponse,
+  WhatsAppVerificationStatus,
   WhatsAppVerificationVerifyResponse,
 } from "./types";
 
@@ -136,6 +137,20 @@ export function resendWhatsAppVerification(
     body: payload,
     method: "POST",
   });
+}
+
+export function getWhatsAppVerificationStatus(
+  accessToken: string | null | undefined,
+  purpose: "onboarding" | "phone_change",
+  verificationId: string,
+) {
+  return apiRequest<WhatsAppVerificationStatus>(
+    `/v1/me/whatsapp-verification/status?purpose=${purpose}&verification_id=${encodeURIComponent(verificationId)}`,
+    {
+      accessToken: requireAccessToken(accessToken),
+      method: "GET",
+    },
+  );
 }
 
 export function startWhatsAppPhoneChange(

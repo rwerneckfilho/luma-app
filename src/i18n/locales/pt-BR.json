@@ -1059,6 +1059,7 @@
   "whatsappVerification": {
     "title": "Confirme seu WhatsApp",
     "sent": "Enviamos códigos para as possíveis variações do seu número.",
+    "deliveryUnknown": "Solicitamos o código, mas não foi possível confirmar a entrega. Ele ainda pode chegar; aguarde alguns instantes.",
     "resent": "Enviamos novos códigos.",
     "codeLabel": "Código de verificação",
     "confirm": "Confirmar código",
@@ -1069,6 +1070,8 @@
     "messageSent": "Já enviei a mensagem",
     "pendingTitle": "Confirmação pendente",
     "pendingMessage": "Ainda não recebemos a mensagem. Envie pelo WhatsApp e tente novamente em alguns segundos.",
+    "challengeEndedTitle": "Confirmação encerrada",
+    "challengeEndedMessage": "Esta confirmação não está mais ativa. Inicie novamente para continuar.",
     "openWhatsApp": "Abrir WhatsApp da LUMA",
     "verifiedPhone": "WhatsApp confirmado",
     "unverifiedPhone": "WhatsApp ainda não confirmado",
