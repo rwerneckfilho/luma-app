@@ -1,20 +1,22 @@
 /**
  * AI_CONTEXT
- * repo: luma-front-webapp
+ * repo: luma-app
  * layer: hook
  * domain: daily-medications
  * purpose: React Query hooks for Home dashboard reads and dose taken/skipped mutations.
  * entrypoints:
  *   - useDailyMedications
  *   - useMarkDoseTaken
+ *   - useMarkDosesTakenBatch
  *   - useSkipDose
  * reads:
  *   - /v1/me/daily-medications
  * mutates:
  *   - /v1/me/daily-medications/:eventId/taken
+ *   - /v1/me/daily-medications/taken-batch
  *   - /v1/me/daily-medications/:eventId/skipped
  * used_by:
- *   - src/home/HomePage.tsx
+ *   - src/features/home/HomeScreen.tsx
  * read_first_when:
  *   - Debugging Home dashboard fetches, mark taken, skip, or cache invalidation.
  * avoid_reading_when:
@@ -25,8 +27,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import { ApiError } from "../lib/apiClient";
-import { getDailyMedications, markDoseTaken, skipDose } from "./api";
-import type { MarkDoseTakenPayload } from "./types";
+import {
+  getDailyMedications,
+  markDoseTaken,
+  markDosesTakenBatches,
+  skipDose,
+} from "./api";
+import type { BulkMarkDoseTakenPayload, MarkDoseTakenPayload } from "./types";
 
 export const dailyMedicationsQueryKey = ["daily-medications"] as const;
 
@@ -65,6 +72,31 @@ export function useMarkDoseTaken() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: dailyMedicationsQueryKey });
     },
+  });
+}
+
+export function useMarkDosesTakenBatch() {
+  /**
+   * Reconcile the active Home query before resolving the mutation. This keeps
+   * partial outcomes and intentionally unselected doses driven by server state.
+   */
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payloads: BulkMarkDoseTakenPayload[]) =>
+      markDosesTakenBatches(accessToken, payloads),
+    onSettled: () => refetchDailyMedicationsAfterBatch(queryClient),
+  });
+}
+
+export function refetchDailyMedicationsAfterBatch(queryClient: Pick<
+  ReturnType<typeof useQueryClient>,
+  "refetchQueries"
+>) {
+  return queryClient.refetchQueries({
+    queryKey: dailyMedicationsQueryKey,
+    type: "active",
   });
 }
 

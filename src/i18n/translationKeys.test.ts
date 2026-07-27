@@ -40,4 +40,31 @@ describe("literal translation keys", () => {
     });
     expect(invalid).toEqual([]);
   });
+
+  it("keeps every bulk confirmation key in parity", () => {
+    const bulkKeys = [
+      "bulkConfirm",
+      "bulkConfirmAccessibility",
+      "bulkCta",
+      "bulkCtaAccessibility",
+      "bulkEmptySelection",
+      "bulkErrorDescription",
+      "bulkErrorTitle",
+      "bulkInvalidSelection",
+      "bulkNoCommonMode",
+      "bulkOnTimeHint",
+      "bulkPartialResult",
+      "bulkPartialTitle",
+      "bulkSelectedCount",
+      "bulkSheetDescription",
+      "bulkSheetTitle",
+      "bulkSuccessResult",
+      "bulkSuccessTitle",
+      "bulkTakenTime",
+    ];
+    for (const resource of [ptBR, en, es]) {
+      expect(bulkKeys.filter((key) => typeof resource.home[key as keyof typeof resource.home] !== "string"))
+        .toEqual([]);
+    }
+  });
 });
