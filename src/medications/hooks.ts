@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import {
   createMedication,
+  createMedicationListShare,
   deleteMedication,
   listMedications,
   updateMedication,
@@ -86,4 +87,9 @@ export function useDeleteMedication() {
       void queryClient.invalidateQueries({ queryKey: medicationsQueryKey });
     },
   });
+}
+
+export function useCreateMedicationListShare() {
+  const { accessToken } = useAuth();
+  return useMutation({ mutationFn: () => createMedicationListShare(accessToken) });
 }

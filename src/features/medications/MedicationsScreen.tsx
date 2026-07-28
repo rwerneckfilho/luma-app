@@ -1,10 +1,16 @@
 import { useMemo, useState } from "react";
 import { Alert, Share, StyleSheet, Text, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import {
   useDeleteMedication,
+  useCreateMedicationListShare,
   useMedications,
 } from "../../medications/hooks";
+import {
+  MedicationPdfSharingUnavailableError,
+  shareMedicationListPdf,
+} from "../../medications/sharePdf";
 import type { Medication } from "../../medications/types";
 import { buildMedicationShareText } from "../../medications/shareList";
 import {
@@ -23,6 +29,7 @@ import {
 } from "../../routines/routineUtils";
 import type { Routine } from "../../routines/types";
 import { useUserProfile } from "../../me/hooks";
+import { useAuth } from "../../auth/useAuth";
 import type { MedicationImportItem } from "../../medicationImports/types";
 import { colors, spacing } from "../../design/theme";
 import {
@@ -51,7 +58,9 @@ export function MedicationsScreen() {
   const medications = useMedications();
   const routines = useRoutines();
   const profile = useUserProfile();
+  const { accessToken } = useAuth();
   const archive = useDeleteMedication();
+  const createShare = useCreateMedicationListShare();
   const cancelRoutine = useCancelRoutine();
   const updateStatus = useUpdateRoutineStatus();
   const [search, setSearch] = useState("");
@@ -59,6 +68,9 @@ export function MedicationsScreen() {
   const [importVisible, setImportVisible] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [historyRoutine, setHistoryRoutine] = useState<Routine | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
+  const [medicationListShare, setMedicationListShare] = useState<{ expires_at: string; share_url: string } | null>(null);
+  const [sharingPdf, setSharingPdf] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -77,15 +89,82 @@ export function MedicationsScreen() {
     void routines.refetch();
   };
 
-  const shareList = async () => {
-    const message = buildMedicationShareText({
+  const activeMedications = useMemo(
+    () => (medications.data ?? []).filter((medication) => !medication.is_archived),
+    [medications.data],
+  );
+
+  const shareMessage = () => buildMedicationShareText({
       generatedAt: new Date(),
-      items: filtered.map((medication) => ({ medication, routines: routinesFor(medication.id) })),
+      // A shared list is intentionally complete, regardless of a local search filter.
+      items: activeMedications.map((medication) => ({ medication, routines: routinesFor(medication.id) })),
       locale: i18n.resolvedLanguage ?? "pt-BR",
       patientName: profile.data?.full_name,
       t,
     });
-    await Share.share({ message, title: t("medications.shareList") });
+
+  const copyText = async () => {
+    try {
+      await Clipboard.setStringAsync(shareMessage());
+      Alert.alert(t("medications.share.copied"));
+    } catch {
+      Alert.alert(t("medications.share.copyFailed"));
+    }
+  };
+
+  const shareText = async () => {
+    try {
+      await Share.share({ message: shareMessage(), title: t("medications.shareList") });
+    } catch (error) {
+      Alert.alert(t("medications.share.shareFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
+    }
+  };
+
+  const createLink = async () => {
+    try {
+      const share = await createShare.mutateAsync();
+      setMedicationListShare(share);
+    } catch (error) {
+      Alert.alert(t("medications.share.linkFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
+    }
+  };
+
+  const copyLink = async () => {
+    if (!medicationListShare) return;
+    try {
+      await Clipboard.setStringAsync(medicationListShare.share_url);
+      Alert.alert(t("medications.share.linkCopied"));
+    } catch {
+      Alert.alert(t("medications.share.linkCopyFailed"));
+    }
+  };
+
+  const shareLink = async () => {
+    if (!medicationListShare) return;
+    try {
+      await Share.share({ message: medicationListShare.share_url, title: t("medications.share.linkTitle") });
+    } catch (error) {
+      Alert.alert(t("medications.share.shareFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
+    }
+  };
+
+  const sharePdf = async () => {
+    setSharingPdf(true);
+    try {
+      await shareMedicationListPdf({
+        accessToken,
+        dialogTitle: t("medications.share.pdfTitle"),
+        lumaId: profile.data?.luma_id ?? "luma",
+      });
+    } catch (error) {
+      Alert.alert(
+        error instanceof MedicationPdfSharingUnavailableError
+          ? t("medications.share.pdfUnavailable")
+          : t("medications.share.pdfFailed"),
+      );
+    } finally {
+      setSharingPdf(false);
+    }
   };
 
   const confirmArchive = (medication: Medication) => {
@@ -128,7 +207,7 @@ export function MedicationsScreen() {
       <View style={nativeStyles.actionRow}>
         <Button onPress={() => setEditor({ kind: "create" })}>{t("medications.addCta")}</Button>
         <Button onPress={() => setImportVisible(true)} secondary>{t("medicationAi.title")}</Button>
-        <Button onPress={() => void shareList()} secondary>{t("medications.share.share")}</Button>
+        <Button onPress={() => setShareVisible(true)} secondary>{t("medications.share.share")}</Button>
       </View>
       {medications.isLoading || routines.isLoading ? <StateMessage loading title={t("medications.loading")} /> : null}
       {medications.isError || routines.isError ? (
@@ -175,7 +254,86 @@ export function MedicationsScreen() {
         routine={editingRoutine}
       />
       <RoutineHistorySheet onClose={() => setHistoryRoutine(null)} routine={historyRoutine} />
+      <MedicationShareSheet
+        expiresAt={medicationListShare?.expires_at}
+        isCreatingLink={createShare.isPending}
+        isSharingPdf={sharingPdf}
+        onClose={() => setShareVisible(false)}
+        onCopyLink={copyLink}
+        onCopyText={copyText}
+        onCreateLink={() => void createLink()}
+        onShareLink={() => void shareLink()}
+        onSharePdf={() => void sharePdf()}
+        onShareText={() => void shareText()}
+        preview={shareMessage()}
+        shareUrl={medicationListShare?.share_url}
+        visible={shareVisible}
+      />
     </Screen>
+  );
+}
+
+function MedicationShareSheet({
+  expiresAt,
+  isCreatingLink,
+  isSharingPdf,
+  onClose,
+  onCopyLink,
+  onCopyText,
+  onCreateLink,
+  onShareLink,
+  onSharePdf,
+  onShareText,
+  preview,
+  shareUrl,
+  visible,
+}: {
+  expiresAt?: string;
+  isCreatingLink: boolean;
+  isSharingPdf: boolean;
+  onClose: () => void;
+  onCopyLink: () => void;
+  onCopyText: () => void;
+  onCreateLink: () => void;
+  onShareLink: () => void;
+  onSharePdf: () => void;
+  onShareText: () => void;
+  preview: string;
+  shareUrl?: string;
+  visible: boolean;
+}) {
+  const { i18n, t } = useTranslation();
+  const expiresAtLabel = expiresAt
+    ? new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(expiresAt))
+    : null;
+  return (
+    <Sheet onClose={onClose} title={t("medications.share.title")} visible={visible}>
+      <Section title={t("medications.share.textSection")}>
+        <Body muted>{t("medications.share.previewBody")}</Body>
+        <Text selectable style={styles.sharePreview}>{preview}</Text>
+        <View style={nativeStyles.actionRow}>
+          <Button onPress={onCopyText} secondary>{t("medications.share.copy")}</Button>
+          <Button onPress={onShareText} secondary>{t("medications.share.share")}</Button>
+        </View>
+      </Section>
+      <Section title={t("medications.share.pdfSection")}>
+        <Body muted>{t("medications.share.pdfBody")}</Body>
+        <View style={nativeStyles.actionRow}>
+          <Button loading={isCreatingLink} onPress={onCreateLink} secondary>{t("medications.share.createLink")}</Button>
+          <Button loading={isSharingPdf} onPress={onSharePdf}>{t("medications.share.sharePdf")}</Button>
+        </View>
+        {shareUrl ? (
+          <Card style={styles.linkCard}>
+            <Body>{t("medications.share.linkReady", { expiresAt: expiresAtLabel })}</Body>
+            <Text selectable style={styles.shareUrl}>{shareUrl}</Text>
+            <View style={nativeStyles.actionRow}>
+              <Button onPress={onCopyLink} secondary>{t("medications.share.copyLink")}</Button>
+              <Button onPress={onShareLink} secondary>{t("medications.share.shareLink")}</Button>
+            </View>
+          </Card>
+        ) : null}
+      </Section>
+    </Sheet>
   );
 }
 
@@ -271,4 +429,7 @@ const styles = StyleSheet.create({
   name: { color: colors.ink, fontSize: 21, fontWeight: "800" },
   routineCard: { backgroundColor: colors.background, marginTop: spacing.xs },
   routineTitle: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: "800" },
+  linkCard: { marginTop: spacing.sm },
+  sharePreview: { color: colors.ink, fontSize: 13, lineHeight: 20, maxHeight: 260 },
+  shareUrl: { color: colors.primary, fontSize: 13, marginTop: spacing.sm },
 });

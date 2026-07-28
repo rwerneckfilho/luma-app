@@ -35,7 +35,7 @@ export function requireAccessToken(accessToken: string | null | undefined) {
   return accessToken;
 }
 
-function resolveUrl(path: string) {
+export function resolveApiUrl(path: string) {
   if (/^https?:\/\//.test(path)) return path;
   if (!env.apiBaseUrl) throw new ApiError("API não configurada.", 0);
   return `${env.apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
@@ -59,7 +59,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   let response: Response;
   try {
-    response = await fetch(resolveUrl(path), {
+    response = await fetch(resolveApiUrl(path), {
       ...requestOptions,
       body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
       headers,

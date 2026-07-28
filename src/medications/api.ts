@@ -23,7 +23,7 @@
  * invariants:
  *   - Delete calls archive medication records through luma-core.
  */
-import { apiRequest, requireAccessToken } from "../lib/apiClient";
+import { ApiError, apiRequest, requireAccessToken, resolveApiUrl } from "../lib/apiClient";
 import { unwrapItems } from "../lib/apiResponse";
 import type { Medication, MedicationMutationPayload, MedicationUpdatePayload } from "./types";
 
@@ -64,4 +64,40 @@ export function deleteMedication(accessToken: string | null | undefined, medicat
     accessToken: requireAccessToken(accessToken),
     method: "DELETE",
   });
+}
+
+export type MedicationListShare = {
+  share_url: string;
+  expires_at: string;
+  expires_in_seconds: number;
+};
+
+export function createMedicationListShare(accessToken: string | null | undefined) {
+  return apiRequest<MedicationListShare>("/v1/me/medication-list-shares", {
+    accessToken: requireAccessToken(accessToken),
+    method: "POST",
+  });
+}
+
+/** Downloads the authenticated PDF into the app cache using Expo's File API. */
+export async function downloadMedicationListPdf(
+  accessToken: string | null | undefined,
+  destinationUri: string,
+) {
+  const token = requireAccessToken(accessToken);
+  let response: Response;
+  try {
+    response = await fetch(resolveApiUrl("/v1/me/medication-list.pdf"), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new ApiError("MEDICATION_LIST_PDF_DOWNLOAD_FAILED", 0);
+  }
+  if (!response.ok) throw new ApiError("MEDICATION_LIST_PDF_DOWNLOAD_FAILED", response.status);
+
+  const { File } = await import("expo-file-system");
+  const file = new File(destinationUri);
+  file.create({ overwrite: true });
+  file.write(await response.bytes());
+  return file.uri;
 }
