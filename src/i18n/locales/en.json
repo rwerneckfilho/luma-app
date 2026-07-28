@@ -1078,6 +1078,7 @@
   "whatsappVerification": {
     "title": "Confirm your WhatsApp",
     "sent": "We sent codes to the possible variants of your number.",
+    "deliveryUnknown": "We requested the code but could not confirm delivery. It may still arrive; please wait a few moments.",
     "resent": "We sent new codes.",
     "codeLabel": "Verification code",
     "confirm": "Confirm code",
@@ -1088,6 +1089,8 @@
     "messageSent": "I've sent the message",
     "pendingTitle": "Confirmation pending",
     "pendingMessage": "We haven't received the message yet. Send it through WhatsApp and try again in a few seconds.",
+    "challengeEndedTitle": "Confirmation ended",
+    "challengeEndedMessage": "This confirmation is no longer active. Start again to continue.",
     "openWhatsApp": "Open LUMA WhatsApp",
     "verifiedPhone": "WhatsApp confirmed",
     "unverifiedPhone": "WhatsApp not confirmed yet",

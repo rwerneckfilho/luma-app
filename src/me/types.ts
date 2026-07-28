@@ -82,10 +82,15 @@ export type UserProfileUpdate = {
 };
 
 export type WhatsAppVerificationPurpose = "onboarding" | "phone_change";
+export type WhatsAppVerificationDeliveryStatus =
+  | "not_requested"
+  | "sent"
+  | "unknown";
 
 export type WhatsAppVerificationStartResponse = {
   verification_id: string;
   status: "pending";
+  delivery_status: WhatsAppVerificationDeliveryStatus;
   expires_at: string;
   cooldown_seconds: number;
   resend_available_at: string | null;
@@ -99,4 +104,20 @@ export type WhatsAppVerificationVerifyResponse = {
   selected_method: string;
   selected_phone_masked: string;
   verified_at: string;
+};
+
+export type WhatsAppVerificationStatus = {
+  status:
+    | "not_started"
+    | "pending"
+    | "verified"
+    | "expired"
+    | "cancelled"
+    | "failed"
+    | "superseded";
+  verification_id: string | null;
+  expires_at: string | null;
+  attempts_remaining: number;
+  resends_remaining: number;
+  fallback_available_at: string | null;
 };

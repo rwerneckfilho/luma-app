@@ -14,6 +14,7 @@ function challenge(
   return {
     candidates_sent: [],
     cooldown_seconds: 30,
+    delivery_status: "not_requested",
     expires_at: "2026-07-18T15:10:00.000Z",
     fallback_available_at: null,
     fallback_url: "https://wa.me/5511999999999?text=verify",

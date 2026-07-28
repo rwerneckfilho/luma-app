@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -10,6 +10,7 @@ import {
   useUpdateNotificationPreferences,
   useUserProfile,
   useVerifyWhatsAppVerification,
+  useWhatsAppVerificationStatus,
 } from "../../me/hooks";
 import { useNotifications } from "../../notifications/useNotifications";
 import { useMedications } from "../../medications/hooks";
@@ -20,6 +21,10 @@ import {
 } from "../../care/hooks";
 import type { CarePublicUser } from "../../care/types";
 import type { WhatsAppVerificationStartResponse } from "../../me/types";
+import {
+  getWhatsAppOtpDeliveryFeedback,
+  getWhatsAppVerificationDecision,
+} from "../../me/whatsappVerification";
 import { env } from "../../config/env";
 import { colors, spacing } from "../../design/theme";
 import { Body, Button, Card, Choice, Field, Screen, StateMessage, nativeStyles } from "../shared/native";
@@ -33,8 +38,11 @@ import {
   shouldShowWhatsAppVerificationCode,
 } from "../shared/whatsAppInboundVerification";
 import { MedicationEditorSheet } from "../medications/MedicationEditorSheet";
-
-type ChannelChoice = "app_only" | "whatsapp_only" | "both";
+import {
+  defaultOnboardingChannelChoice,
+  getNotificationPreferences,
+  type OnboardingChannelChoice,
+} from "./notificationChannels";
 
 export function OnboardingScreen() {
   const { t } = useTranslation();
@@ -46,7 +54,9 @@ export function OnboardingScreen() {
   const complete = useCompleteOnboarding();
   const notifications = useNotifications();
   const [step, setStep] = useState(0);
-  const [channel, setChannel] = useState<ChannelChoice>("app_only");
+  const [channel, setChannel] = useState<OnboardingChannelChoice>(
+    defaultOnboardingChannelChoice,
+  );
   const [medicationVisible, setMedicationVisible] = useState(false);
   const whatsappVerificationRequired =
     env.whatsappVerificationRequired &&
@@ -69,10 +79,7 @@ export function OnboardingScreen() {
       if (channel !== "whatsapp_only" && !notifications.registration) {
         await notifications.enableCurrentDevice();
       }
-      await updatePreferences.mutateAsync({
-        app_notifications_enabled: channel !== "whatsapp_only",
-        whatsapp_notifications_enabled: channel !== "app_only",
-      });
+      await updatePreferences.mutateAsync(getNotificationPreferences(channel));
       setStep(1);
     } catch (error) {
       Alert.alert(t("onboarding.notifications.appSetupFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
@@ -95,7 +102,7 @@ export function OnboardingScreen() {
         <Card>
           <Text style={styles.heading}>{t("onboarding.notifications.title")}</Text>
           <Body muted>{t("onboarding.notifications.description")}</Body>
-          <Choice<ChannelChoice>
+          <Choice<OnboardingChannelChoice>
             label={t("settings.notificationMode.title")}
             onChange={setChannel}
             options={[
@@ -174,6 +181,29 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
     setCodeRequested(state.codeRequested);
     setToken(state.token);
   };
+  const verificationStatus = useWhatsAppVerificationStatus(
+    challenge ? "onboarding" : undefined,
+    challenge?.verification_id,
+  );
+  const verificationDecision = getWhatsAppVerificationDecision(
+    verificationStatus.data,
+    challenge?.verification_id,
+  );
+
+  useEffect(() => {
+    if (verificationDecision === "waiting") return;
+    setChallenge(null);
+    setToken("");
+    setCodeRequested(false);
+    if (verificationDecision === "verified") {
+      onVerified();
+      return;
+    }
+    Alert.alert(
+      t("whatsappVerification.challengeEndedTitle"),
+      t("whatsappVerification.challengeEndedMessage"),
+    );
+  }, [onVerified, t, verificationDecision]);
   const begin = async () => {
     try {
       await beginWhatsAppInboundVerification({
@@ -224,7 +254,13 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
           <Button loading={profile.isRefetching} onPress={() => void checkInbound()} secondary>{t("whatsappVerification.messageSent")}</Button>
           {shouldShowWhatsAppVerificationCode({ codeRequested }) ? (
             <>
-              <Body muted>{t("whatsappVerification.sent")}</Body>
+              <Body muted>
+                {t(
+                  getWhatsAppOtpDeliveryFeedback(challenge.delivery_status) === "sent"
+                    ? "whatsappVerification.sent"
+                    : "whatsappVerification.deliveryUnknown",
+                )}
+              </Body>
               <Field keyboardType="number-pad" label={t("whatsappVerification.codeLabel")} maxLength={4} onChangeText={(value) => setToken(normalizeWhatsAppVerificationToken(value))} value={token} />
               <View style={nativeStyles.actionRow}>
                 <Button disabled={!isWhatsAppVerificationTokenComplete(token)} loading={verify.isPending} onPress={() => void confirm()}>{t("whatsappVerification.confirm")}</Button>
@@ -234,7 +270,16 @@ function OnboardingWhatsApp({ onVerified, phone }: { onVerified: () => void; pho
               </View>
             </>
           ) : (
-            <Button loading={resend.isPending} onPress={() => void resendCode()} secondary>{t("whatsappVerification.receiveCode")}</Button>
+            <Button
+              disabled={resendSeconds > 0}
+              loading={resend.isPending}
+              onPress={() => void resendCode()}
+              secondary
+            >
+              {resendSeconds > 0
+                ? t("whatsappVerification.resendIn", { seconds: resendSeconds })
+                : t("whatsappVerification.receiveCode")}
+            </Button>
           )}
         </>
       )}

@@ -23,12 +23,14 @@
  * invariants:
  *   - Query keys include current user identity for auth-scoped data.
  */
+import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import {
   completeOnboarding,
   getNotificationPreferences,
   getUserProfile,
+  getWhatsAppVerificationStatus,
   resendWhatsAppVerification,
   sendSampleReminder,
   startWhatsAppPhoneChange,
@@ -38,6 +40,12 @@ import {
   verifyWhatsAppPhoneChange,
   verifyWhatsAppVerification,
 } from "./api";
+import {
+  getWhatsAppVerificationPollingInterval,
+  getWhatsAppVerificationPollingKey,
+  whatsappVerificationMaxFailureCount,
+  whatsappVerificationTtlMs,
+} from "./whatsappVerification";
 import type {
   NotificationPreferences,
   UpdateNotificationPreferencesPayload,
@@ -47,6 +55,9 @@ import type {
 
 export const notificationPreferencesQueryKey = ["notification-preferences"] as const;
 export const userProfileQueryKey = ["user-profile"] as const;
+export const whatsappVerificationStatusQueryKey = [
+  "whatsapp-verification-status",
+] as const;
 
 const notificationPreferencesQueryKeyForUser = (userId?: string) =>
   [...notificationPreferencesQueryKey, userId ?? "anonymous"] as const;
@@ -174,6 +185,106 @@ export function useResendWhatsAppVerification() {
   return useMutation({
     mutationFn: (payload: { verification_id: string }) =>
       resendWhatsAppVerification(accessToken, payload),
+  });
+}
+
+export function useWhatsAppVerificationStatus(
+  purpose: "onboarding" | "phone_change" | undefined,
+  verificationId: string | undefined,
+) {
+  const { accessToken, user } = useAuth();
+  const pollingKey = getWhatsAppVerificationPollingKey(
+    user?.id,
+    purpose,
+    verificationId,
+  );
+  const pollingStateRef = useRef<{
+    consecutiveFailures: number;
+    jitterSample: number;
+    key: string;
+    startedAtMs: number;
+  } | null>(null);
+  const getPollingState = () => {
+    const currentState = pollingStateRef.current;
+    if (pollingKey && currentState?.key === pollingKey) {
+      return currentState;
+    }
+    if (!pollingKey) {
+      return null;
+    }
+
+    const nextState = {
+      consecutiveFailures: 0,
+      jitterSample: 0,
+      key: pollingKey,
+      startedAtMs: Date.now(),
+    };
+    pollingStateRef.current = nextState;
+    return nextState;
+  };
+
+  return useQuery({
+    enabled: Boolean(purpose && verificationId && accessToken && user?.id),
+    queryFn: async () => {
+      const pollingState = getPollingState();
+      try {
+        const status = await getWhatsAppVerificationStatus(
+          accessToken,
+          purpose!,
+          verificationId!,
+        );
+        if (pollingState && pollingStateRef.current === pollingState) {
+          pollingState.consecutiveFailures = 0;
+          pollingState.jitterSample = 0;
+        }
+        return status;
+      } catch (error) {
+        if (pollingState && pollingStateRef.current === pollingState) {
+          pollingState.consecutiveFailures = Math.min(
+            whatsappVerificationMaxFailureCount,
+            pollingState.consecutiveFailures + 1,
+          );
+          pollingState.jitterSample = Math.random();
+        }
+        throw error;
+      }
+    },
+    queryKey: [
+      ...whatsappVerificationStatusQueryKey,
+      purpose,
+      verificationId,
+      user?.id ?? "anonymous",
+    ],
+    refetchInterval: (query) => {
+      const pollingState = getPollingState();
+      if (!pollingState) return false;
+      return getWhatsAppVerificationPollingInterval({
+        consecutiveFailures: pollingState.consecutiveFailures,
+        expiresAt: query.state.data?.expires_at,
+        fallbackExpiresAtMs:
+          pollingState.startedAtMs + whatsappVerificationTtlMs,
+        jitterSample: pollingState.jitterSample,
+        nowMs: Date.now(),
+        status: query.state.data?.status,
+      });
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: (query) => {
+      const pollingState = getPollingState();
+      if (!pollingState) return false;
+      return (
+        getWhatsAppVerificationPollingInterval({
+          consecutiveFailures: pollingState.consecutiveFailures,
+          expiresAt: query.state.data?.expires_at,
+          fallbackExpiresAtMs:
+            pollingState.startedAtMs + whatsappVerificationTtlMs,
+          jitterSample: pollingState.jitterSample,
+          nowMs: Date.now(),
+          status: query.state.data?.status,
+        }) !== false
+      );
+    },
+    retry: false,
   });
 }
 
