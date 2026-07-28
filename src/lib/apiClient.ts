@@ -26,6 +26,10 @@ export function onAuthSessionInvalid(listener: () => void) {
   return () => authInvalidListeners.delete(listener);
 }
 
+export function notifyAuthSessionInvalid() {
+  authInvalidListeners.forEach((listener) => listener());
+}
+
 export function requireAccessToken(accessToken: string | null | undefined) {
   if (!accessToken) throw new ApiError("Sessão expirada.", 401);
   return accessToken;
@@ -73,7 +77,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     // Public one-time push-action tokens can legitimately expire with 401. Only an
     // authenticated request proves that the current Supabase session is invalid.
     if (response.status === 401 && accessToken) {
-      authInvalidListeners.forEach((listener) => listener());
+      notifyAuthSessionInvalid();
     }
     const message = typeof detail === "string" && detail.trim()
       ? detail
