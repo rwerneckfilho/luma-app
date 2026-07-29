@@ -3,6 +3,8 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/manrope": "^0.4.2",
     "@expo/ui": "~56.0.21",
     "@hookform/resolvers": "^5.4.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -10,6 +12,7 @@
     "@tanstack/react-query": "^5.101.2",
     "expo": "~56.0.15",
     "expo-application": "~56.0.3",
+    "expo-blur": "~56.0.3",
     "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.20",
     "expo-device": "~56.0.4",
@@ -49,29 +52,38 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
     "expo-dev-client": "~56.0.22",
     "jest": "^29.7.0",
     "jest-expo": "~56.0.5",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "assets:notification-icon": "node ./scripts/generate-notification-icon.mjs",
+    "env:from-front": "bash ./scripts/sync-env-from-front.sh",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
+    "test:visual": "node --test scripts/visual/compare-png.test.mjs",
+    "visual:compare": "node scripts/visual/compare-png.mjs",
     "test:watch": "jest --watch"
   },
   "jest": {
+    "moduleNameMapper": {
+      "^lucide-react-native$": "<rootDir>/src/test/lucideMock.tsx"
+    },
     "preset": "jest-expo",
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|react-native-svg)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|react-native-svg|lucide-react-native)"
     ]
   },
   "private": true

@@ -19,9 +19,8 @@ export default function EntryRoute() {
     (profile?.onboarding?.whatsapp_verification_required ?? true) &&
     !whatsappVerified;
 
-  if (!profile || onboardingIncomplete || whatsappRequired) {
-    return <Redirect href="/onboarding" />;
-  }
+  if (!profile || onboardingIncomplete) return <Redirect href="/onboarding" />;
+  if (whatsappRequired) return <Redirect href="/whatsapp-verification" />;
 
   return <Redirect href="/(app)/home" />;
 }

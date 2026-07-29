@@ -1,0 +1,25 @@
+appId: life.myluma.app
+name: Main app sections
+tags: [visual, navigation]
+---
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: medications, ROUTE: "/(app)/medications" }
+- assertVisible: "Losartana"
+- takeScreenshot: "artifacts/medications"
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: history, ROUTE: "/(app)/history" }
+- assertVisible: "Histórico"
+- takeScreenshot: "artifacts/history"
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: care, ROUTE: "/(app)/caregivers" }
+- assertVisible: "Paulo Oliveira"
+- takeScreenshot: "artifacts/care"
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: profile, ROUTE: "/(app)/profile" }
+- assertVisible: "Marina Oliveira"
+- takeScreenshot: "artifacts/profile"
+

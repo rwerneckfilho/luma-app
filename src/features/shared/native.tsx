@@ -1,4 +1,6 @@
-import type { PropsWithChildren, ReactNode } from "react";
+import { ChevronDown, X } from "lucide-react-native";
+import type { ComponentType, PropsWithChildren, ReactNode } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,27 +15,41 @@ import {
   TextInput,
   type TextInputProps,
   View,
+  useWindowDimensions,
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, fonts, radii, spacing } from "../../design/theme";
+import { colors, fonts, layout, radii, shadows, spacing } from "../../design/theme";
 
 export function Screen({
   children,
+  edges = [],
+  maxWidth = layout.contentMaxWidth,
   onRefresh,
   refreshing = false,
   title,
-}: PropsWithChildren<{ onRefresh?: () => void; refreshing?: boolean; title?: string }>) {
+}: PropsWithChildren<{
+  edges?: ("top" | "right" | "bottom" | "left")[];
+  maxWidth?: number;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  title?: string;
+}>) {
+  const { width } = useWindowDimensions();
   return (
-    <SafeAreaView edges={["top"]} style={styles.safe}>
+    <SafeAreaView edges={edges} style={styles.safe}>
       <ScrollView
-        contentContainerStyle={styles.screen}
+        contentContainerStyle={[
+          styles.screen,
+          { maxWidth },
+          width >= layout.tabletBreakpoint && styles.screenWide,
+        ]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           onRefresh ? <RefreshControl onRefresh={onRefresh} refreshing={refreshing} /> : undefined
         }
       >
-        {title ? <Text style={styles.title}>{title}</Text> : null}
+        {title ? <Text accessibilityRole="header" style={[styles.title, width >= layout.tabletBreakpoint && styles.titleWide]}>{title}</Text> : null}
         {children}
       </ScrollView>
     </SafeAreaView>
@@ -66,6 +82,7 @@ export function Field({ error, label, ...props }: TextInputProps & { error?: str
     <View style={styles.fieldWrap}>
       <Label>{label}</Label>
       <TextInput
+        accessibilityLabel={props.accessibilityLabel ?? label}
         placeholderTextColor={colors.muted}
         {...props}
         style={[styles.input, props.multiline && styles.textarea, props.style]}
@@ -81,9 +98,13 @@ type ButtonProps = PropsWithChildren<{
   loading?: boolean;
   onPress?: () => void;
   secondary?: boolean;
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
+  icon?: ComponentType<{ color?: string; size?: number }>;
 }>;
 
-export function Button({ children, danger, disabled, loading, onPress, secondary }: ButtonProps) {
+export function Button({ children, danger, disabled, icon: Icon, loading, onPress, secondary, variant }: ButtonProps) {
+  const resolvedVariant = danger ? "danger" : secondary ? "secondary" : variant ?? "primary";
+  const foreground = resolvedVariant === "primary" || resolvedVariant === "danger" ? colors.surface : colors.primary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -91,16 +112,21 @@ export function Button({ children, danger, disabled, loading, onPress, secondary
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        secondary && styles.buttonSecondary,
-        danger && styles.buttonDanger,
+        resolvedVariant === "secondary" && styles.buttonSecondary,
+        resolvedVariant === "outline" && styles.buttonOutline,
+        resolvedVariant === "ghost" && styles.buttonGhost,
+        resolvedVariant === "danger" && styles.buttonDanger,
         (disabled || loading) && styles.buttonDisabled,
         pressed && styles.buttonPressed,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={secondary ? colors.primary : colors.surface} />
+        <ActivityIndicator color={foreground} />
       ) : (
-        <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{children}</Text>
+        <View style={styles.buttonContent}>
+          {Icon ? <Icon color={foreground} size={18} /> : null}
+          <Text style={[styles.buttonText, resolvedVariant !== "primary" && resolvedVariant !== "danger" && styles.buttonTextSecondary]}>{children}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -112,6 +138,59 @@ export function IconButton({ label, onPress }: { label: string; onPress: () => v
       <Text style={styles.iconButtonText}>{label}</Text>
     </Pressable>
   );
+}
+
+export function Accordion({
+  children,
+  defaultExpanded = false,
+  expanded,
+  icon: Icon,
+  onExpandedChange,
+  subtitle,
+  title,
+}: PropsWithChildren<{
+  defaultExpanded?: boolean;
+  expanded?: boolean;
+  icon?: ComponentType<{ color?: string; size?: number }>;
+  onExpandedChange?: (expanded: boolean) => void;
+  subtitle?: string;
+  title: string;
+}>) {
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const isExpanded = expanded ?? internalExpanded;
+  const toggle = () => {
+    const next = !isExpanded;
+    if (expanded === undefined) setInternalExpanded(next);
+    onExpandedChange?.(next);
+  };
+
+  return (
+    <View style={styles.accordion}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={toggle}
+        style={({ pressed }) => [styles.accordionHeader, pressed && styles.pressedSoft]}
+      >
+        {Icon ? <View style={styles.accordionIcon}><Icon color={colors.primary} size={20} /></View> : null}
+        <View style={styles.accordionCopy}>
+          <Text style={styles.accordionTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.accordionSubtitle}>{subtitle}</Text> : null}
+        </View>
+        <ChevronDown color={colors.muted} size={20} style={{ transform: [{ rotate: isExpanded ? "180deg" : "0deg" }] }} />
+      </Pressable>
+      {isExpanded ? <View style={styles.accordionContent}>{children}</View> : null}
+    </View>
+  );
+}
+
+export function Badge({ children, tone = "primary" }: PropsWithChildren<{ tone?: "primary" | "success" | "warning" | "danger" | "neutral" }>) {
+  return <Text style={[styles.badge, styles[`badge_${tone}`]]}>{children}</Text>;
+}
+
+export function PageHeading({ children, subtitle }: PropsWithChildren<{ subtitle?: string }>) {
+  const { width } = useWindowDimensions();
+  return <View style={styles.pageHeading}><Text accessibilityRole="header" style={[styles.title, width >= layout.tabletBreakpoint && styles.titleWide]}>{children}</Text>{subtitle ? <Text style={styles.pageSubtitle}>{subtitle}</Text> : null}</View>;
 }
 
 export function Choice<T extends string>({
@@ -190,7 +269,9 @@ export function Sheet({
         >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
-            <IconButton label="Fechar" onPress={onClose} />
+            <Pressable accessibilityLabel="Fechar" accessibilityRole="button" onPress={onClose} style={styles.sheetClose}>
+              <X color={colors.ink} size={22} />
+            </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             {children}
@@ -229,7 +310,7 @@ export const nativeStyles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     borderRadius: radii.pill,
     color: colors.primary,
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodyBold,
     fontSize: 12,
     fontWeight: "700",
     overflow: "hidden",
@@ -243,30 +324,47 @@ export const nativeStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  body: { color: colors.ink, fontFamily: fonts.body, fontSize: 15, lineHeight: 22 },
+  body: { color: colors.ink, fontFamily: fonts.body, fontSize: 16, lineHeight: 24 },
   button: {
     alignItems: "center",
     backgroundColor: colors.primary,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     minHeight: 48,
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
   buttonDanger: { backgroundColor: colors.danger },
+  buttonContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "center" },
   buttonDisabled: { opacity: 0.5 },
   buttonPressed: { opacity: 0.82 },
   buttonSecondary: { backgroundColor: colors.primarySoft, borderColor: colors.primary, borderWidth: 1 },
-  buttonText: { color: colors.surface, fontFamily: fonts.body, fontSize: 15, fontWeight: "700" },
+  buttonOutline: { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1 },
+  buttonGhost: { backgroundColor: "transparent" },
+  buttonText: { color: colors.surface, fontFamily: fonts.bodyBold, fontSize: 15 },
   buttonTextSecondary: { color: colors.primary },
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.borderSoft,
     borderRadius: radii.lg,
     borderWidth: 1,
     gap: spacing.md,
     padding: spacing.lg,
+    ...shadows.card,
   },
+  accordion: { backgroundColor: colors.surface, borderColor: colors.borderSoft, borderRadius: radii.lg, borderWidth: 1, overflow: "hidden", ...shadows.card },
+  accordionContent: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.md, padding: spacing.lg },
+  accordionCopy: { flex: 1, gap: 2 },
+  accordionHeader: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: 64, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  accordionIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radii.pill, height: 36, justifyContent: "center", width: 36 },
+  accordionSubtitle: { color: colors.muted, fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
+  accordionTitle: { color: colors.ink, fontFamily: fonts.bodySemibold, fontSize: 16, lineHeight: 22 },
+  badge: { alignSelf: "flex-start", borderRadius: radii.pill, fontFamily: fonts.bodyBold, fontSize: 12, overflow: "hidden", paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  badge_primary: { backgroundColor: colors.primarySoft, color: colors.primary },
+  badge_success: { backgroundColor: colors.successSoft, color: colors.success },
+  badge_warning: { backgroundColor: colors.warningSoft, color: colors.warning },
+  badge_danger: { backgroundColor: colors.dangerSoft, color: colors.danger },
+  badge_neutral: { backgroundColor: colors.surfaceMuted, color: colors.muted },
   chip: {
     borderColor: colors.border,
     borderRadius: radii.pill,
@@ -294,12 +392,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  label: { color: colors.ink, fontFamily: fonts.body, fontSize: 14, fontWeight: "700" },
+  label: { color: colors.ink, fontFamily: fonts.bodySemibold, fontSize: 14 },
   muted: { color: colors.muted },
   safe: { backgroundColor: colors.background, flex: 1 },
-  screen: { gap: spacing.xl, padding: spacing.lg, paddingBottom: 120 },
+  screen: { alignSelf: "center", gap: spacing.xl, paddingHorizontal: 20, paddingTop: spacing.lg, paddingBottom: 120, width: "100%" },
+  screenWide: { paddingHorizontal: spacing.xxl, paddingTop: spacing.xxl },
   section: { gap: spacing.md },
-  sectionTitle: { color: colors.ink, fontFamily: fonts.heading, fontSize: 19, fontWeight: "700" },
+  sectionTitle: { color: colors.ink, fontFamily: fonts.headingBold, fontSize: 19 },
   sheet: { flex: 1 },
   sheetContent: { gap: spacing.lg, padding: spacing.lg, paddingBottom: 80 },
   sheetHeader: {
@@ -308,13 +407,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
+    minHeight: 64,
     paddingHorizontal: spacing.lg,
   },
-  sheetTitle: { color: colors.ink, fontFamily: fonts.heading, fontSize: 20, fontWeight: "700" },
+  sheetClose: { alignItems: "center", borderRadius: radii.pill, height: 44, justifyContent: "center", width: 44 },
+  sheetTitle: { color: colors.ink, fontFamily: fonts.headingBold, fontSize: 20 },
   stateCard: { alignItems: "center" },
-  stateTitle: { color: colors.ink, fontFamily: fonts.heading, fontSize: 18, fontWeight: "700" },
+  stateTitle: { color: colors.ink, fontFamily: fonts.headingBold, fontSize: 18 },
   textarea: { minHeight: 96, textAlignVertical: "top" },
-  title: { color: colors.ink, fontFamily: fonts.heading, fontSize: 30, fontWeight: "800" },
+  pageHeading: { gap: spacing.xs },
+  pageSubtitle: { color: colors.muted, fontFamily: fonts.body, fontSize: 15, lineHeight: 22 },
+  pressedSoft: { backgroundColor: colors.surfaceMuted },
+  title: { color: colors.ink, fontFamily: fonts.headingBold, fontSize: 30, lineHeight: 38 },
+  titleWide: { fontSize: 40, lineHeight: 48 },
   toggleCopy: { flex: 1, gap: spacing.xs },
   toggleRow: { alignItems: "center", flexDirection: "row", gap: spacing.lg },
 });

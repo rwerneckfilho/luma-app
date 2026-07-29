@@ -2,9 +2,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
 import { Pressable, Text, View } from "react-native";
+import { Lock, Mail } from "lucide-react-native";
+import * as WebBrowser from "expo-web-browser";
 import { useTranslation } from "react-i18next";
 import {
   AuthButton,
+  AuthAccessOptions,
   AuthFeedback,
   AuthField,
   AuthHeading,
@@ -54,16 +57,12 @@ export default function LoginScreen() {
   return (
     <AuthScreen
       footer={(
-        <View style={authStyles.row}>
-          <Text style={authStyles.text}>{t("auth.dontHaveAccount")}</Text>
-          <Pressable onPress={() => router.push("/(auth)/register")}>
-            <Text style={authStyles.link}>{t("auth.createAccount")}</Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={() => void WebBrowser.openBrowserAsync("https://myluma.life")}><Text style={authStyles.link}>{t("auth.joinWaitlist")}</Text></Pressable>
       )}
     >
       <View style={authStyles.stack}>
-        <AuthHeading subtitle={t("auth.loginSubtitle")} title={t("auth.loginTitle")} />
+        <AuthHeading subtitle={t("auth.closedTestingSubtitle")} title={t("auth.accessTitle")} />
+        <AuthAccessOptions activeMode="account" onChange={(mode) => { if (mode === "code") router.replace("/(auth)/register"); }} />
         <AuthFeedback message={errors.root?.message} />
         <Controller
           control={control}
@@ -73,6 +72,7 @@ export default function LoginScreen() {
               autoCapitalize="none"
               autoComplete="email"
               error={errors.email?.message}
+              icon={Mail}
               inputMode="email"
               label={t("auth.emailAddress")}
               onBlur={onBlur}
@@ -88,6 +88,7 @@ export default function LoginScreen() {
             <AuthField
               autoComplete="current-password"
               error={errors.password?.message}
+              icon={Lock}
               label={t("auth.password")}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -99,8 +100,7 @@ export default function LoginScreen() {
         <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
           <Text style={authStyles.link}>{t("auth.forgotPassword")}</Text>
         </Pressable>
-        <AuthButton loading={isSubmitting} onPress={() => void submit()} title={t("auth.signIn")} />
-        <Text style={authStyles.text}>{t("auth.safetyNote")}</Text>
+        <AuthButton loading={isSubmitting} onPress={() => void submit()} title={t("common.continue")} />
       </View>
     </AuthScreen>
   );

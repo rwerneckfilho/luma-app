@@ -54,6 +54,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const previousUserId = useRef<string | null>(null);
+  const sessionRef = useRef<Session | null>(null);
   const beforeSignOutCleanups = useRef(new Set<() => Promise<void>>());
 
   const applySession = useCallback(
@@ -63,6 +64,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         queryClient.clear();
       }
       previousUserId.current = nextUserId;
+      sessionRef.current = nextSession;
       setSession(nextSession);
     },
     [queryClient],
@@ -173,7 +175,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const linkSubscription = Linking.addEventListener("url", ({ url }) => {
       void consumeAuthCallback(url);
     });
-    const removeInvalidSessionListener = onAuthSessionInvalid(() => {
+    const removeInvalidSessionListener = onAuthSessionInvalid((accessToken) => {
+      if (sessionRef.current?.access_token !== accessToken) return;
       applySession(null);
       void setRecoveryState(false);
       void supabase.auth.signOut({ scope: "local" });

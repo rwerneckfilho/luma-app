@@ -1,0 +1,11 @@
+appId: life.myluma.app
+tags:
+  - helper
+env:
+  SCREENSHOT: ${SCREENSHOT}
+  EXPECTED: ${EXPECTED}
+---
+- assertVisible: ${EXPECTED}
+- waitForAnimationToEnd
+- takeScreenshot: ${SCREENSHOT}
+

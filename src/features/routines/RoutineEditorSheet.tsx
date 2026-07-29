@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import {
@@ -30,6 +30,9 @@ export function RoutineEditorSheet({
   const { t } = useTranslation();
   const mutation = useCreateRoutineRevision();
   const [values, setValues] = useState<RoutineEditFormValues | null>(null);
+  const [externalSavePending, setExternalSavePending] = useState(false);
+  const saveInFlight = useRef(false);
+  const isSaving = mutation.isPending || externalSavePending;
 
   useEffect(() => {
     if (routine) setValues(routineToEditFormValues(routine, defaultDoseUnit));
@@ -43,18 +46,26 @@ export function RoutineEditorSheet({
     setValues((current) => (current ? { ...current, [key]: value } : current));
 
   const save = async () => {
+    if (saveInFlight.current) return;
     const parsed = createRoutineEditSchema(t).safeParse(values);
     if (!parsed.success) {
       Alert.alert(t("routines.validationError"), parsed.error.issues[0]?.message);
       return;
     }
+    saveInFlight.current = true;
     try {
       const payload = toRoutineRevisionPayload(parsed.data, routine);
-      if (onSave) await onSave(routine, payload);
+      if (onSave) {
+        setExternalSavePending(true);
+        await onSave(routine, payload);
+      }
       else await mutation.mutateAsync({ payload, routineId: routine.id });
       onClose();
     } catch (error) {
       Alert.alert(t("routines.unableToUpdateRoutine"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
+    } finally {
+      saveInFlight.current = false;
+      setExternalSavePending(false);
     }
   };
 
@@ -113,7 +124,7 @@ export function RoutineEditorSheet({
           ) : null}
         </>
       )}
-      <Button loading={mutation.isPending} onPress={() => void save()}>{t("routines.saveRoutine")}</Button>
+      <Button disabled={isSaving} loading={isSaving} onPress={() => void save()}>{t("routines.saveRoutine")}</Button>
     </Sheet>
   );
 }

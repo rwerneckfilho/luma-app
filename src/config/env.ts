@@ -20,7 +20,9 @@ export const env = {
   ),
   supabaseUrl: clean(process.env.EXPO_PUBLIC_SUPABASE_URL),
   whatsappVerificationRequired:
-    process.env.EXPO_PUBLIC_WHATSAPP_PHONE_VERIFICATION_ONBOARDING_REQUIRED === "true",
+    process.env.EXPO_PUBLIC_WHATSAPP_PHONE_VERIFICATION_ONBOARDING_REQUIRED !== "false",
+  visualTestMode:
+    __DEV__ && process.env.EXPO_PUBLIC_VISUAL_TEST_MODE === "true",
 };
 
 export const missingRequiredEnvironment = () =>

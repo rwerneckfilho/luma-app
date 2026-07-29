@@ -1,0 +1,20 @@
+appId: life.myluma.app
+name: Home visual states
+tags: [visual, home]
+---
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: home-full, ROUTE: "/(app)/home" }
+- assertVisible: "Losartana"
+- takeScreenshot: "artifacts/home-full"
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: home-empty, ROUTE: "/(app)/home" }
+- assertVisible: "Nenhum medicamento"
+- takeScreenshot: "artifacts/home-empty"
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: home-prn, ROUTE: "/(app)/home" }
+- assertVisible: "Dipirona"
+- takeScreenshot: "artifacts/home-prn"
+

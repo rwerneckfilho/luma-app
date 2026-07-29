@@ -1,0 +1,9 @@
+appId: life.myluma.app
+name: iPhone visual suite
+tags: [visual, iphone]
+---
+- runFlow: ../flows/auth.yaml
+- runFlow: ../flows/whatsapp.yaml
+- runFlow: ../flows/home-states.yaml
+- runFlow: ../flows/app-sections.yaml
+

@@ -3,7 +3,10 @@
     "name": "LUMA",
     "slug": "luma-app",
     "version": "1.0.0",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/luma-icon.png",
     "scheme": "luma",
@@ -62,6 +65,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b91fa9e2-1dfe-4457-a266-470cb35abbe6"
+      }
     }
   }
 }

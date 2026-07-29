@@ -23,12 +23,15 @@
  */
 import type { TFunction } from "i18next";
 import type {
+  DailyMedicationDashboard,
   DailyMedicationItem,
   DailyMedicationStatus,
   TakenMode,
 } from "./types";
 import { getMedicationUnitLabel } from "../lib/medicationUnits";
 import { normalizeDoseUnit } from "../routines/routineUtils";
+
+const TAKEN_WINDOW_MS = 10 * 60_000;
 
 export function formatDashboardDate(locale: string, date?: string | null, timezone?: string | null) {
   const safeTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -94,6 +97,68 @@ export function canSkipDose(item: DailyMedicationItem) {
   }
 
   return item.status === "due" || item.status === "overdue";
+}
+
+export function projectDailyMedicationItem(
+  item: DailyMedicationItem,
+  serverNow: string,
+): DailyMedicationItem {
+  if (item.status === "taken" || item.status === "skipped") return item;
+  const now = new Date(serverNow).getTime();
+  const scheduled = new Date(item.scheduled_for).getTime();
+  if (!Number.isFinite(now) || !Number.isFinite(scheduled)) return item;
+  if (now < scheduled) {
+    return { ...item, allowed_taken_options: [], can_mark_taken: false, can_skip: false, status: "upcoming" };
+  }
+  const due = now <= scheduled + TAKEN_WINDOW_MS;
+  return {
+    ...item,
+    allowed_taken_options: due ? ["on_time", "now"] : ["on_time", "now", "manual"],
+    can_mark_taken: true,
+    can_skip: true,
+    status: due ? "due" : "overdue",
+  };
+}
+
+export function projectDailyMedicationDashboard(
+  dashboard: DailyMedicationDashboard,
+  serverNow: string,
+): DailyMedicationDashboard {
+  const now = new Date(serverNow).getTime();
+  if (!Number.isFinite(now)) return dashboard;
+  const items = dashboard.items.map((item) => projectDailyMedicationItem(item, serverNow));
+  const next = items
+    .filter((item) => item.status !== "taken" && item.status !== "skipped")
+    .map((item) => item.scheduled_for)
+    .filter((value) => new Date(value).getTime() > now)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+  return { ...dashboard, items, next_scheduled_for: next ?? null, server_now: serverNow };
+}
+
+export function projectServerNow(serverNow: string, dataUpdatedAt: number, clientNow = Date.now()) {
+  const server = new Date(serverNow).getTime();
+  if (!Number.isFinite(server)) return serverNow;
+  const updated = Number.isFinite(dataUpdatedAt) && dataUpdatedAt > 0 ? dataUpdatedAt : clientNow;
+  return new Date(server + Math.max(0, clientNow - updated)).toISOString();
+}
+
+export function getNextDailyMedicationTransitionAt(
+  dashboard: DailyMedicationDashboard,
+  serverNow: string,
+) {
+  const now = new Date(serverNow).getTime();
+  if (!Number.isFinite(now)) return null;
+  let next: number | null = null;
+  dashboard.items.forEach((item) => {
+    if (item.status === "taken" || item.status === "skipped") return;
+    const scheduled = new Date(item.scheduled_for).getTime();
+    if (!Number.isFinite(scheduled)) return;
+    const candidate = now < scheduled
+      ? scheduled
+      : now <= scheduled + TAKEN_WINDOW_MS ? scheduled + TAKEN_WINDOW_MS + 1 : null;
+    if (candidate !== null && (next === null || candidate < next)) next = candidate;
+  });
+  return next;
 }
 
 export function getTreatmentTypeLabelKey(treatmentType: DailyMedicationItem["treatment_type"]) {

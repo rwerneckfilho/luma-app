@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Bot, Check, ChevronLeft, ChevronRight, Pencil } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import {
   createMedicationFormSchema,
@@ -27,12 +28,7 @@ import type {
   TreatmentType,
 } from "../../routines/types";
 import { dayOptions, scheduleOptions } from "../../routines/routineFormOptions";
-import {
-  useNotificationPreferences,
-  useUpdateNotificationPreferences,
-} from "../../me/hooks";
 import type { MedicationImportItem } from "../../medicationImports/types";
-import { useNotifications } from "../../notifications/useNotifications";
 import { medicationUnitOptions } from "../../lib/medicationUnits";
 import { colors, spacing } from "../../design/theme";
 import {
@@ -43,7 +39,6 @@ import {
   Field,
   Label,
   Sheet,
-  ToggleRow,
   nativeStyles,
 } from "../shared/native";
 
@@ -51,6 +46,7 @@ type Props = {
   aiDraft?: MedicationImportItem | null;
   medication?: Medication | null;
   onClose: () => void;
+  onRequestAi?: () => void;
   routineMedication?: Medication | null;
   visible: boolean;
 };
@@ -316,6 +312,17 @@ export type RoutineSaveCheckpoint = {
   routines: Map<number, SavedRoutineProgress>;
 };
 
+export const MEDICATION_WIZARD_STEPS = 6;
+
+export function medicationWizardStepForIssue(path: PropertyKey[]) {
+  const field = String(path[0] ?? "");
+  if (["name", "dosage_text", "form", "medication_reason", "prescribing_doctor_name", "notes"].includes(field)) return 0;
+  if (["treatment_type", "start_date", "end_date"].includes(field)) return 1;
+  if (["schedule_type", "custom_kind"].includes(field)) return 2;
+  if (["instructions"].includes(field)) return 4;
+  return 3;
+}
+
 type RoutineSaveOperations = {
   cancel: (routineId: string) => Promise<unknown>;
   create: (payload: CreateRoutinePayload) => Promise<Routine>;
@@ -364,19 +371,17 @@ export async function persistRoutinePayloads(
   }
 }
 
-export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMedication, visible }: Props) {
+export function MedicationEditorSheet({ aiDraft, medication, onClose, onRequestAi, routineMedication, visible }: Props) {
   const { t } = useTranslation();
   const isEdit = Boolean(medication);
   const isRoutineOnly = Boolean(routineMedication);
-  const preferences = useNotificationPreferences(visible && !isEdit && !isRoutineOnly);
-  const updatePreferences = useUpdateNotificationPreferences();
   const createMedication = useCreateMedication();
   const updateMedication = useUpdateMedication();
   const createRoutine = useCreateRoutine();
   const createRoutineRevision = useCreateRoutineRevision();
   const cancelRoutine = useCancelRoutine();
-  const notifications = useNotifications();
   const [values, setValues] = useState<AddMedicationFlowValues>(freshValues);
+  const [step, setStep] = useState(0);
   const saveCheckpointRef = useRef<{
     medication: Medication | null;
     routines: RoutineSaveCheckpoint;
@@ -384,6 +389,7 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
 
   useEffect(() => {
     if (!visible) return;
+    setStep(0);
     saveCheckpointRef.current = { medication: null, routines: { routines: new Map() } };
     if (routineMedication) {
       setValues({ ...freshValues(), ...medicationToFormValues(routineMedication) });
@@ -396,23 +402,12 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
     }
   }, [aiDraft, medication, routineMedication, visible]);
 
-  useEffect(() => {
-    if (!visible || isEdit || isRoutineOnly || !preferences.data) return;
-    setValues((current) => ({
-      ...current,
-      app_notifications_enabled: preferences.data.app_notifications_enabled,
-      whatsapp_notifications_enabled: preferences.data.whatsapp_notifications_enabled,
-    }));
-  }, [isEdit, isRoutineOnly, preferences.data, visible]);
-
   const busy =
     createMedication.isPending ||
     updateMedication.isPending ||
     createRoutine.isPending ||
     createRoutineRevision.isPending ||
-    cancelRoutine.isPending ||
-    updatePreferences.isPending ||
-    notifications.isBusy;
+    cancelRoutine.isPending;
 
   const set = <K extends keyof AddMedicationFlowValues>(key: K, value: AddMedicationFlowValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
@@ -470,18 +465,12 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
     const parsed = createAddMedicationFlowSchema(t).safeParse(values);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
+      setStep(medicationWizardStepForIssue(first?.path ?? []));
       Alert.alert(t("routines.validationError"), `${first?.message ?? t("common.somethingWentWrong")}\n${first?.path.join(" → ") ?? ""}`);
       return;
     }
 
     try {
-      if (parsed.data.app_notifications_enabled && !notifications.registration) {
-        await notifications.enableCurrentDevice();
-      }
-      await updatePreferences.mutateAsync({
-        app_notifications_enabled: parsed.data.app_notifications_enabled,
-        whatsapp_notifications_enabled: parsed.data.whatsapp_notifications_enabled,
-      });
       const medicationPayload = toMedicationPayload(parsed.data);
       let savedMedication = saveCheckpointRef.current.medication;
       if (savedMedication) {
@@ -515,7 +504,17 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
       title={isRoutineOnly ? t("medications.addIntakeNamed", { name: routineMedication?.name }) : isEdit ? t("medications.editMedication") : t("medications.addCta")}
       visible={visible}
     >
-      {!isRoutineOnly ? (
+      {!isEdit && !isRoutineOnly ? (
+        <>
+          <View style={styles.sourceRow}>
+            <Button icon={Pencil} onPress={() => setStep(0)} variant={aiDraft ? "outline" : "primary"}>Manual</Button>
+            <Button icon={Bot} onPress={onRequestAi} variant={aiDraft ? "primary" : "outline"}>IA</Button>
+          </View>
+          <WizardProgress current={step} />
+        </>
+      ) : null}
+
+      {!isRoutineOnly && (isEdit || step === 0) ? (
         <>
           <SectionTitle>{t("addMedication.basicsTitle")}</SectionTitle>
           <Field label={t("addMedication.fields.medicationName")} onChangeText={(value) => set("name", value)} value={values.name} />
@@ -529,7 +528,7 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
         <Card><SectionTitle>{routineMedication?.name ?? ""}</SectionTitle></Card>
       )}
 
-      {!isEdit ? (
+      {!isEdit && (isRoutineOnly || step === 1) ? (
         <>
           <SectionTitle>{t("addMedication.treatmentTitle")}</SectionTitle>
           <Choice<TreatmentType>
@@ -553,44 +552,63 @@ export function MedicationEditorSheet({ aiDraft, medication, onClose, routineMed
             </View>
           ) : null}
 
-          {values.treatment_type === "as_needed" ? (
-            <AsNeededFields set={set} values={values} />
-          ) : (
-            <ScheduleFields set={set} values={values} />
-          )}
-
-          <Field label={t("routines.instructions")} multiline onChangeText={(value) => set("instructions", value)} value={values.instructions ?? ""} />
-
-          {!isRoutineOnly ? (
-            <>
-              <SectionTitle>{t("addMedication.reminderTitle")}</SectionTitle>
-              <ToggleRow
-                description={t("settings.appNotificationsDescription")}
-                label={t("settings.appNotifications")}
-                onValueChange={(value) => set("app_notifications_enabled", value)}
-                value={values.app_notifications_enabled}
-              />
-              <ToggleRow
-                description={t("settings.whatsappRemindersDescription")}
-                label={t("settings.whatsappReminders")}
-                onValueChange={(value) => set("whatsapp_notifications_enabled", value)}
-                value={values.whatsapp_notifications_enabled}
-              />
-            </>
-          ) : null}
-          <Card>
-            <SectionTitle>{t("addMedication.reviewTitle")}</SectionTitle>
-            <Body>{values.name}</Body>
-            <Body muted>{values.dosage_text || values.form}</Body>
-            <Body muted>{t(`routines.${values.treatment_type === "as_needed" ? "asNeeded" : values.treatment_type}`)}</Body>
-          </Card>
         </>
       ) : null}
-      <Button loading={busy} onPress={() => void save()}>
-        {isEdit ? t("medications.saveCta") : isRoutineOnly ? t("routines.saveRoutine") : t("common.save")}
-      </Button>
+      {!isEdit && !isRoutineOnly && step === 2 ? (
+        <>
+          <SectionTitle>{t("addMedication.scheduleTypeTitle")}</SectionTitle>
+          {values.treatment_type === "as_needed" ? <Body muted>{t("addMedication.treatmentOptions.as_needed.description")}</Body> : <ScheduleTypeFields set={set} values={values} />}
+        </>
+      ) : null}
+      {!isEdit && !isRoutineOnly && step === 3 ? (
+        <>
+          <SectionTitle>{t("addMedication.scheduleDetailsTitle")}</SectionTitle>
+          {values.treatment_type === "as_needed" ? <AsNeededFields set={set} values={values} /> : <ScheduleFields set={set} values={values} hideType />}
+        </>
+      ) : null}
+      {!isEdit && !isRoutineOnly && step === 4 ? (
+        <>
+          <SectionTitle>{t("routines.instructions")}</SectionTitle>
+          <Field label={t("routines.instructions")} multiline onChangeText={(value) => set("instructions", value)} value={values.instructions ?? ""} />
+          <Body muted>{t("addMedication.profileNotificationsNotice")}</Body>
+        </>
+      ) : null}
+      {!isEdit && !isRoutineOnly && step === 5 ? <MedicationReview values={values} /> : null}
+      {isRoutineOnly ? (
+        <>
+          {values.treatment_type === "as_needed" ? <AsNeededFields set={set} values={values} /> : <ScheduleFields set={set} values={values} />}
+          <Field label={t("routines.instructions")} multiline onChangeText={(value) => set("instructions", value)} value={values.instructions ?? ""} />
+        </>
+      ) : null}
+      {!isEdit && !isRoutineOnly ? (
+        <View style={styles.navigation}>
+          <Button disabled={step === 0 || busy} icon={ChevronLeft} onPress={() => setStep((current) => Math.max(0, current - 1))} variant="outline">{t("common.back")}</Button>
+          {step < MEDICATION_WIZARD_STEPS - 1 ? (
+            <Button icon={ChevronRight} onPress={() => setStep((current) => Math.min(MEDICATION_WIZARD_STEPS - 1, current + 1))}>{t("common.continue")}</Button>
+          ) : (
+            <Button icon={Check} loading={busy} onPress={() => void save()}>{t("common.save")}</Button>
+          )}
+        </View>
+      ) : (
+        <Button loading={busy} onPress={() => void save()}>{isEdit ? t("medications.saveCta") : t("routines.saveRoutine")}</Button>
+      )}
     </Sheet>
   );
+}
+
+function WizardProgress({ current }: { current: number }) {
+  const { t } = useTranslation();
+  return (
+    <View accessibilityLabel={t("addMedication.stepIndicator", { current: current + 1, total: MEDICATION_WIZARD_STEPS })} style={styles.progressWrap}>
+      <Text style={styles.progressLabel}>{t("addMedication.stepIndicator", { current: current + 1, total: MEDICATION_WIZARD_STEPS })}</Text>
+      <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${((current + 1) / MEDICATION_WIZARD_STEPS) * 100}%` }]} /></View>
+    </View>
+  );
+}
+
+function MedicationReview({ values }: { values: AddMedicationFlowValues }) {
+  const { t } = useTranslation();
+  return <Card><SectionTitle>{t("addMedication.reviewTitle")}</SectionTitle><Body>{values.name}</Body><Body muted>{[values.dosage_text, values.form].filter(Boolean).join(" · ")}</Body><Body muted>{t(`routines.${values.treatment_type === "as_needed" ? "asNeeded" : values.treatment_type}`)}</Body><Body muted>{values.instructions || t("addMedication.reviewBody")}</Body></Card>;
 }
 
 function SectionTitle({ children }: { children: string }) {
@@ -639,7 +657,7 @@ type FormSectionProps = {
   values: AddMedicationFlowValues;
 };
 
-function ScheduleFields({ set, values }: FormSectionProps) {
+function ScheduleTypeFields({ set, values }: FormSectionProps) {
   const { t } = useTranslation();
   const scheduleValue = values.schedule_type === "custom"
     ? `custom:${values.custom_kind}`
@@ -665,10 +683,14 @@ function ScheduleFields({ set, values }: FormSectionProps) {
     }
   };
 
+  return <Choice label={t("routines.schedule")} onChange={changeSchedule} options={options} value={scheduleValue} />;
+}
+
+function ScheduleFields({ hideType = false, set, values }: FormSectionProps & { hideType?: boolean }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.group}>
-      <SectionTitle>{t("addMedication.scheduleTitle")}</SectionTitle>
-      <Choice label={t("routines.schedule")} onChange={changeSchedule} options={options} value={scheduleValue} />
+      {!hideType ? <><SectionTitle>{t("addMedication.scheduleTitle")}</SectionTitle><ScheduleTypeFields set={set} values={values} /></> : null}
       {values.schedule_type === "weekly" ? (
         <DaySelector onChange={(days) => set("days_of_week", days)} value={values.days_of_week} />
       ) : null}
@@ -860,5 +882,11 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   flex: { flex: 1 },
   group: { gap: spacing.md },
+  navigation: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.md },
+  progressFill: { backgroundColor: colors.primary, borderRadius: 4, height: 8 },
+  progressLabel: { color: colors.muted, fontSize: 13, fontWeight: "700" },
+  progressTrack: { backgroundColor: colors.border, borderRadius: 4, height: 8, overflow: "hidden" },
+  progressWrap: { gap: spacing.xs },
   sectionTitle: { color: colors.ink, fontSize: 20, fontWeight: "800", marginTop: spacing.md },
+  sourceRow: { flexDirection: "row", gap: spacing.sm },
 });

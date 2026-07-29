@@ -1,0 +1,9 @@
+appId: life.myluma.app
+name: Tablet visual suite
+tags: [visual, tablet]
+---
+- runFlow: ../flows/auth.yaml
+- runFlow: ../flows/whatsapp.yaml
+- runFlow: ../flows/home-states.yaml
+- runFlow: ../flows/app-sections.yaml
+

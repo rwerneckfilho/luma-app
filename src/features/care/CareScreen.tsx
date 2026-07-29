@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/useAuth";
 import {
@@ -29,6 +30,7 @@ import { useMedications } from "../../medications/hooks";
 import {
   dateDaysAgo,
   formatAsNeededUsageDateTime,
+  formatHistoryDate,
   formatHistoryTime,
   getHistoryStatusLabelKey,
   getTimelineDescription,
@@ -37,7 +39,8 @@ import {
 import type { AdherenceHistoryStatus } from "../../history/types";
 import type { CareTimelineFilters } from "../../care/timelineTypes";
 import { colors } from "../../design/theme";
-import { Body, Button, Card, Choice, Field, Label, Screen, Section, Sheet, StateMessage, ToggleRow, nativeStyles } from "../shared/native";
+import { createProfilePhotoSignedUrl } from "../../profilePhotos/native";
+import { Accordion, Badge, Body, Button, Card, Choice, Field, Label, Screen, Section, StateMessage, ToggleRow, nativeStyles } from "../shared/native";
 import { RoutineEditorSheet } from "../routines/RoutineEditorSheet";
 import type { Routine } from "../../routines/types";
 import {
@@ -65,8 +68,6 @@ export function CareScreen() {
   const invitations = useCareInvitations();
   const accept = useAcceptCareInvitation();
   const decline = useDeclineCareInvitation();
-  const [inviteVisible, setInviteVisible] = useState(false);
-  const [selected, setSelected] = useState<CareRelationship | null>(null);
 
   const refresh = () => {
     void relationships.refetch();
@@ -88,82 +89,83 @@ export function CareScreen() {
   return (
     <Screen onRefresh={refresh} refreshing={relationships.isRefetching || invitations.isRefetching} title={t("nav.caregivers")}>
       <Body muted>{t("settings.caregiversPageDescription")}</Body>
-      <Button onPress={() => setInviteVisible(true)}>{t("settings.addCaregiver")}</Button>
+      <Accordion title={t("settings.addCaregiver")}>
+        <InviteCareForm />
+      </Accordion>
       {relationships.isLoading || invitations.isLoading ? <StateMessage loading title={t("settings.loadingCareRelationships")} /> : null}
       {relationships.isError || invitations.isError ? <StateMessage action={<Button onPress={refresh}>{t("common.tryAgain")}</Button>} title={t("settings.failedLoadCareRelationships")} /> : null}
 
       <Section title={t("settings.careInvitations")}>
         {(invitations.data?.invitations ?? []).length === 0 ? <StateMessage title={t("settings.noCareInvitations")} /> : null}
         {(invitations.data?.invitations ?? []).map((relationship) => (
-          <RelationshipCard key={relationship.id} onOpen={() => setSelected(relationship)} relationship={relationship}>
-            <View style={nativeStyles.actionRow}>
-              <Button loading={accept.isPending} onPress={() => void respond(relationship, true)}>{t("settings.acceptCareInvite")}</Button>
-              <Button danger loading={decline.isPending} onPress={() => void respond(relationship, false)}>{t("settings.declineCareInvite")}</Button>
-            </View>
-          </RelationshipCard>
+          <RelationshipAccordion key={relationship.id} relationship={relationship}>
+            {relationship.status === "pending" ? (
+              <View style={nativeStyles.actionRow}>
+                <Button loading={accept.isPending} onPress={() => void respond(relationship, true)}>{t("settings.acceptCareInvite")}</Button>
+                <Button danger loading={decline.isPending} onPress={() => void respond(relationship, false)}>{t("settings.declineCareInvite")}</Button>
+              </View>
+            ) : null}
+          </RelationshipAccordion>
         ))}
       </Section>
 
       <Section title={t("settings.careWhoCaresForMe")}>
         {sent.length === 0 ? <StateMessage title={t("settings.noCareRelationships")} /> : null}
-        {sent.map((relationship) => <RelationshipCard key={relationship.id} onOpen={() => setSelected(relationship)} relationship={relationship} />)}
+        {sent.map((relationship) => <RelationshipAccordion key={relationship.id} relationship={relationship} />)}
       </Section>
       <Section title={t("settings.carePeopleUnderMyCare")}>
         {received.length === 0 ? <StateMessage title={t("settings.noCareRelationships")} /> : null}
-        {received.map((relationship) => <RelationshipCard key={relationship.id} onOpen={() => setSelected(relationship)} relationship={relationship} />)}
+        {received.map((relationship) => <RelationshipAccordion key={relationship.id} relationship={relationship} />)}
       </Section>
-
-      <InviteCareSheet onClose={() => setInviteVisible(false)} visible={inviteVisible} />
-      <CareRelationshipSheet onClose={() => setSelected(null)} relationship={selected} />
     </Screen>
   );
 }
 
-function RelationshipCard({ children, onOpen, relationship }: { children?: React.ReactNode; onOpen: () => void; relationship: CareRelationship }) {
+function RelationshipAccordion({ children, relationship }: { children?: React.ReactNode; relationship: CareRelationship }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const otherName = relationship.patient_user_id === user?.id ? relationship.caregiver_display_name : relationship.patient_display_name;
+  const photoPath = relationship.patient_user_id === user?.id ? relationship.caregiver_profile_photo_path : relationship.patient_profile_photo_path;
   return (
-    <Card>
-      <View style={nativeStyles.rowBetween}>
-        <Text style={styles.name}>{otherName}</Text>
-        <Text style={nativeStyles.badge}>{t(`settings.careInviteStatuses.${relationship.status}`)}</Text>
-      </View>
-      <Body muted>{t(`settings.relationshipOptions.${relationship.relationship_type}`)}</Body>
-      {!relationship.is_active && relationship.inactive_reason ? <Body muted>{t(`settings.inactiveReasons.${relationship.inactive_reason}`)}</Body> : null}
+    <Accordion
+      subtitle={`${t(`settings.relationshipOptions.${relationship.relationship_type}`)} | ${t(`settings.careInviteStatuses.${relationship.status}`)}`}
+      title={otherName}
+    >
+      <RelationshipIdentity name={otherName} photoPath={photoPath} relationship={relationship} />
       {children}
-      <Button onPress={onOpen} secondary>{t("settings.editCaregiverSettings")}</Button>
-    </Card>
+      <CareRelationshipPanel relationship={relationship} />
+    </Accordion>
   );
 }
 
-function InviteCareSheet({ onClose, visible }: { onClose: () => void; visible: boolean }) {
+function InviteCareForm() {
   const { t } = useTranslation();
   const lookup = useLookupCareUserByLumaId();
   const create = useCreateCareRelationship();
   const [lumaId, setLumaId] = useState("");
   const [found, setFound] = useState<CarePublicUser | null>(null);
-  const [relationshipType, setRelationshipType] = useState<CareRelationshipType>("family");
+  const [relationshipType, setRelationshipType] = useState<CareRelationshipType>("caregiver");
   const [duration, setDuration] = useState<"indefinite" | "until_date">("indefinite");
   const [validUntil, setValidUntil] = useState("");
   const [permissions, setPermissions] = useState(defaultPermissions);
   const [scope, setScope] = useState<CareScopePayload>({ medication_ids: [], medication_scope: "all_medications" });
+  const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
   const validationError = validateCareInvite({ duration, scope, validUntil });
 
-  const close = () => {
+  const reset = () => {
     lookup.reset();
     create.reset();
     setLumaId("");
     setFound(null);
-    setRelationshipType("family");
+    setRelationshipType("caregiver");
     setDuration("indefinite");
     setValidUntil("");
     setPermissions(defaultPermissions);
     setScope({ medication_ids: [], medication_scope: "all_medications" });
-    onClose();
   };
 
   const verify = async () => {
+    setDeliveryMessage(null);
     setFound(null);
     if (!lumaId.trim()) {
       Alert.alert(t("settings.careLumaIdRequired"));
@@ -189,7 +191,7 @@ function InviteCareSheet({ onClose, visible }: { onClose: () => void; visible: b
       return;
     }
     try {
-      await create.mutateAsync({
+      const result = await create.mutateAsync({
         caregiver_luma_id: found.luma_id,
         duration_type: duration,
         permissions,
@@ -197,14 +199,21 @@ function InviteCareSheet({ onClose, visible }: { onClose: () => void; visible: b
         scope: normalizeCareScope(scope),
         valid_until: duration === "until_date" ? validUntil : null,
       });
-      close();
+      const deliveryStatus = result.whatsapp_invitation?.status;
+      setDeliveryMessage(t(deliveryStatus === "failed"
+        ? "settings.careInviteCreatedWhatsappFailed"
+        : deliveryStatus === "skipped"
+          ? "settings.careInviteCreatedWhatsappSkipped"
+          : "settings.careInviteCreated"));
+      reset();
     } catch (error) {
       Alert.alert(t("settings.careInviteFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
     }
   };
 
   return (
-    <Sheet onClose={close} title={t("settings.addCaregiver")} visible={visible}>
+    <View style={styles.inlineForm}>
+      {deliveryMessage ? <Card><Body>{deliveryMessage}</Body></Card> : null}
       <Field
         autoCapitalize="characters"
         label={t("settings.caregiverLumaId")}
@@ -244,24 +253,24 @@ function InviteCareSheet({ onClose, visible }: { onClose: () => void; visible: b
           ) : null}
         </>
       ) : null}
-    </Sheet>
+    </View>
   );
 }
 
-function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void; relationship: CareRelationship | null }) {
+function CareRelationshipPanel({ relationship }: { relationship: CareRelationship }) {
   const { i18n, t } = useTranslation();
   const { user } = useAuth();
   const updatePermissions = useUpdateCarePermissions();
   const updatePreferences = useUpdateCarePreferences();
   const updateScope = useUpdateCareScope();
   const revoke = useRevokeCareRelationship();
-  const isPatient = relationship?.patient_user_id === user?.id;
-  const isAcceptedActive = relationship?.status === "accepted" && relationship.is_active;
+  const isPatient = relationship.patient_user_id === user?.id;
+  const isAcceptedActive = relationship.status === "accepted" && relationship.is_active;
   const canViewTimeline = Boolean(
-    relationship && !isPatient && isAcceptedActive && relationship.allow_view_timeline,
+    !isPatient && isAcceptedActive && relationship.allow_view_timeline,
   );
   const canManageRoutines = Boolean(
-    relationship && !isPatient && isAcceptedActive && relationship.allow_manage_routines,
+    !isPatient && isAcceptedActive && relationship.allow_manage_routines,
   );
   const routines = useCareRelationshipRoutines(relationship?.id, canManageRoutines);
   const updateRoutine = useUpdateCaregiverRoutine();
@@ -277,6 +286,8 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
   const [timelineMedication, setTimelineMedication] = useState("");
   const [timelineDoctor, setTimelineDoctor] = useState("");
   const [timelineStatus, setTimelineStatus] = useState<AdherenceHistoryStatus | "">("");
+  const [editing, setEditing] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const timelineDateError = timelinePreset === "custom"
     ? validateDateRange(timelineDateFrom, timelineDateTo)
     : null;
@@ -298,11 +309,11 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
   const timeline = useCareTimeline(
     relationship?.id ?? "",
     timelineQueryFilters,
-    canViewTimeline && timelineDateError === null,
+    canViewTimeline && timelineOpen && timelineDateError === null,
   );
   const timelineFilters = useCareTimelineFilters(
     relationship?.id ?? "",
-    canViewTimeline,
+    canViewTimeline && timelineOpen,
   );
   const timelineEntries = useMemo(() => {
     const scheduled = (timeline.data?.items ?? []).map((item) => ({
@@ -319,9 +330,39 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
     }));
     return [...scheduled, ...asNeeded].sort((a, b) => (a.at < b.at ? 1 : -1));
   }, [timeline.data]);
+  const timelineGroups = useMemo(() => {
+    const timezone = timeline.data?.timezone ?? "UTC";
+    const groups = new Map<string, typeof timelineEntries>();
+    for (const entry of timelineEntries) {
+      const parts = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone: timezone, year: "numeric" }).formatToParts(new Date(entry.at));
+      const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      const dateKey = `${values.year}-${values.month}-${values.day}`;
+      groups.set(dateKey, [...(groups.get(dateKey) ?? []), entry]);
+    }
+    return [...groups.entries()].sort(([left], [right]) => left < right ? 1 : -1);
+  }, [timeline.data?.timezone, timelineEntries]);
+
+  const clearTimelineFilters = () => {
+    setTimelinePreset("today");
+    setTimelineDateFrom(dateDaysAgo(new Date(), 6));
+    setTimelineDateTo(toDateInputValue());
+    setTimelineMedication("");
+    setTimelineDoctor("");
+    setTimelineStatus("");
+  };
+
+  const resetDraft = () => {
+    const relationshipPermissions = permissionsFromRelationship(relationship);
+    const relationshipScope = normalizeCareScope({
+      medication_ids: relationship.scoped_medications.map((item) => item.id),
+      medication_scope: relationship.medication_scope,
+    });
+    setPermissions(relationshipPermissions);
+    setScope(relationshipScope);
+    setPreference(normalizeCarePreference(relationship.caregiver_notification_mode, relationship));
+  };
 
   useEffect(() => {
-    if (!relationship) return;
     const relationshipPermissions = permissionsFromRelationship(relationship);
     const relationshipScope = normalizeCareScope({
       medication_ids: relationship.scoped_medications.map((item) => item.id),
@@ -339,9 +380,9 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
     setTimelineMedication("");
     setTimelineDoctor("");
     setTimelineStatus("");
+    setTimelineOpen(false);
+    setEditing(false);
   }, [relationship]);
-
-  if (!relationship) return <Sheet onClose={onClose} title={t("settings.careRelationships")} visible={false} />;
 
   const scopeInvalid = scope.medication_scope === "selected_medications" && scope.medication_ids.length === 0;
   const preferenceInvalid = !isCarePreferenceAllowed(preference, relationship);
@@ -380,6 +421,7 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
         await updatePreferences.mutateAsync({ payload: { notification_mode: preference }, relationshipId: relationship.id });
       }
       Alert.alert(t("common.save"), t("settings.permissionsSaved"));
+      setEditing(false);
     } catch (error) {
       Alert.alert(t("settings.caregiverCardSaveError"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
     }
@@ -388,7 +430,6 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
   const revokeRelationship = async () => {
     try {
       await revoke.mutateAsync({ payload: { reason: "user_requested" }, relationshipId: relationship.id });
-      onClose();
     } catch (error) {
       Alert.alert(
         t("settings.caregiverCardSaveError"),
@@ -403,9 +444,12 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
   ]);
 
   return (
-    <Sheet onClose={onClose} title={t("settings.relationshipWithValue", { relationship: isPatient ? relationship.caregiver_display_name : relationship.patient_display_name })} visible>
-      <Card><Body>{relationship.status}</Body><Body muted>{relationship.inactive_reason ?? ""}</Body></Card>
-      {isAcceptedActive ? (
+    <View style={styles.relationshipPanel}>
+      <RelationshipSummary relationship={relationship} />
+      {isAcceptedActive && !editing ? (
+        <Button onPress={() => setEditing(true)} secondary>{t("settings.editCaregiverSettings")}</Button>
+      ) : null}
+      {isAcceptedActive && editing ? (
         <>
           {isPatient ? (
             <>
@@ -423,14 +467,18 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
               {!relationship.allow_receive_together || !relationship.allow_receive_overdue ? <Body muted>{t("settings.prefNotAuthorized")}</Body> : null}
             </>
           )}
-          <Button disabled={scopeInvalid || preferenceInvalid} loading={updatePermissions.isPending || updatePreferences.isPending || updateScope.isPending} onPress={() => void save()}>{t("common.saveChanges")}</Button>
+          <View style={nativeStyles.actionRow}>
+            <Button disabled={scopeInvalid || preferenceInvalid} loading={updatePermissions.isPending || updatePreferences.isPending || updateScope.isPending} onPress={() => void save()}>{t("common.saveChanges")}</Button>
+            <Button onPress={() => { resetDraft(); setEditing(false); }} variant="ghost">{t("common.cancel")}</Button>
+          </View>
         </>
-      ) : (
+      ) : !isAcceptedActive ? (
         <Body muted>{t("settings.prefNotAuthorized")}</Body>
-      )}
+      ) : null}
 
       {canViewTimeline ? (
-        <Section title={t("history.timeline")}>
+        <Accordion onExpandedChange={setTimelineOpen} title={t("history.timeline")}>
+          <Accordion title={t("history.datePreset")}>
           <Choice
             label={t("history.datePreset")}
             onChange={(value) => setTimelinePreset(value as typeof timelinePreset)}
@@ -475,6 +523,8 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
             ]}
             value={timelineStatus}
           />
+          <Button onPress={clearTimelineFilters} variant="ghost">{t("history.clearFilters")}</Button>
+          </Accordion>
           {timeline.isLoading || timelineFilters.isLoading ? <StateMessage loading title={t("history.loading")} /> : null}
           {timeline.isError || timelineFilters.isError ? (
             <StateMessage
@@ -483,7 +533,10 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
             />
           ) : null}
           {timeline.isSuccess && timelineEntries.length === 0 ? <StateMessage title={t("history.noHistory")} /> : null}
-          {timelineEntries.map((entry) => entry.kind === "prn" ? (
+          {timelineGroups.map(([dateKey, entries]) => (
+            <View key={dateKey} style={styles.timelineGroup}>
+              <Label>{formatHistoryDate(i18n.resolvedLanguage ?? "pt-BR", dateKey)}</Label>
+              {entries.map((entry) => entry.kind === "prn" ? (
             <Card key={`care-prn-${entry.id}`}>
               <View style={nativeStyles.rowBetween}>
                 <Text style={styles.name}>{entry.item.medication_name}</Text>
@@ -506,8 +559,10 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
                 takenAt: formatHistoryTime(i18n.resolvedLanguage ?? "pt-BR", entry.item.taken_at, timeline.data?.timezone ?? "UTC"),
               })}</Body>
             </Card>
+              ))}
+            </View>
           ))}
-        </Section>
+        </Accordion>
       ) : null}
 
       {canManageRoutines ? (
@@ -520,14 +575,73 @@ function CareRelationshipSheet({ onClose, relationship }: { onClose: () => void;
           ))}
         </Section>
       ) : null}
-      <Button danger loading={revoke.isPending} onPress={remove}>{t(isPatient ? "settings.removeCaregiver" : "settings.leaveCareRelationship")}</Button>
+      {relationship.status === "pending" || relationship.status === "accepted" ? (
+        <Button danger loading={revoke.isPending} onPress={remove}>{t(isPatient ? relationship.status === "pending" ? "settings.cancelCareInvite" : "settings.removeCaregiver" : "settings.leaveCareRelationship")}</Button>
+      ) : null}
       <RoutineEditorSheet
         defaultDoseUnit={routines.data?.medications.find((item) => item.id === editingRoutine?.medication_id)?.form}
         onClose={() => setEditingRoutine(null)}
         onSave={(routine, payload) => updateRoutine.mutateAsync({ payload, relationshipId: relationship.id, routineId: routine.id })}
         routine={editingRoutine}
       />
-    </Sheet>
+    </View>
+  );
+}
+
+function RelationshipIdentity({ name, photoPath, relationship }: { name: string; photoPath?: string | null; relationship: CareRelationship }) {
+  const { t } = useTranslation();
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setPhotoUrl(null);
+    if (relationship.status !== "accepted" || !photoPath) return () => { active = false; };
+    void createProfilePhotoSignedUrl(photoPath).then((url) => { if (active) setPhotoUrl(url); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [photoPath, relationship.status]);
+  return (
+    <View style={styles.identity}>
+      {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><Text style={styles.avatarInitial}>{name.trim().charAt(0).toUpperCase()}</Text></View>}
+      <View style={styles.identityCopy}>
+        <Text style={styles.name}>{name}</Text>
+        <View style={styles.badges}>
+          <Badge tone={relationship.status === "accepted" ? "success" : relationship.status === "pending" ? "warning" : "neutral"}>{t(`settings.careInviteStatuses.${relationship.status}`)}</Badge>
+          {relationship.status === "accepted" ? <Badge tone={relationship.is_active ? "success" : "danger"}>{t(relationship.is_active ? "settings.activeStatus" : "settings.inactiveStatus")}</Badge> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function RelationshipSummary({ relationship }: { relationship: CareRelationship }) {
+  const { t } = useTranslation();
+  const permissions = permissionsFromRelationship(relationship);
+  const enabledPermissions = (Object.keys(permissions) as (keyof CarePermissionsPayload)[])
+    .filter((key) => permissions[key]);
+  const permissionLabels: Record<keyof CarePermissionsPayload, string> = {
+    allow_manage_routines: t("settings.allowManageRoutines"),
+    allow_mark_patient_taken: t("settings.allowMarkPatientTaken"),
+    allow_receive_overdue: t("settings.allowReceiveOverdue"),
+    allow_receive_together: t("settings.allowReceiveTogether"),
+    allow_skip_patient_dose: t("settings.allowSkipPatientDose"),
+    allow_view_timeline: t("settings.allowViewTimeline"),
+  };
+
+  return (
+    <Card>
+      <View style={nativeStyles.rowBetween}>
+        <Label>{t(`settings.relationshipOptions.${relationship.relationship_type}`)}</Label>
+        <Text style={nativeStyles.badge}>{t(`settings.careInviteStatuses.${relationship.status}`)}</Text>
+      </View>
+      {!relationship.is_active && relationship.inactive_reason ? (
+        <Body muted>{t(`settings.inactiveReasons.${relationship.inactive_reason}`)}</Body>
+      ) : null}
+      <Body muted>
+        {relationship.medication_scope === "all_medications"
+          ? t("settings.allMedications")
+          : relationship.scoped_medications.map((item) => item.name).join(", ")}
+      </Body>
+      {enabledPermissions.map((key) => <Body key={key}>{permissionLabels[key]}</Body>)}
+    </Card>
   );
 }
 
@@ -567,6 +681,15 @@ function blockSuffix(reason: NonNullable<CarePublicUser["invite_block_reason"]>)
 }
 
 const styles = StyleSheet.create({
+  avatar: { borderRadius: 24, height: 48, width: 48 },
+  avatarFallback: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 24, height: 48, justifyContent: "center", width: 48 },
+  avatarInitial: { color: colors.primary, fontSize: 20, fontWeight: "800" },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   flex: { flex: 1 },
+  identity: { alignItems: "center", flexDirection: "row", gap: 12 },
+  identityCopy: { flex: 1, gap: 8 },
+  inlineForm: { gap: 12 },
   name: { color: colors.ink, flex: 1, fontSize: 18, fontWeight: "800" },
+  relationshipPanel: { gap: 12 },
+  timelineGroup: { gap: 8 },
 });

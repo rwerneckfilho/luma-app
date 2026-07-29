@@ -1,11 +1,12 @@
 import type { Href } from "expo-router";
 import { Redirect, router, Tabs } from "expo-router";
-import { Clock3, HeartHandshake, House, Pill, UserRound } from "lucide-react-native";
+import { Clock3, HeartHandshake, House, Pill } from "lucide-react-native";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/useAuth";
 import { colors } from "../../design/theme";
 import { takePendingNotificationRoute } from "../../notifications/pendingRoute";
+import { AppHeader, LumaTabBar } from "../../features/shared/AppShell";
 
 export default function AppLayout() {
   const { session } = useAuth();
@@ -24,8 +25,10 @@ export default function AppLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <LumaTabBar {...props} />}
       screenOptions={{
-        headerShown: false,
+        header: () => <AppHeader />,
+        headerShown: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarHideOnKeyboard: true,
@@ -67,7 +70,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ color, size }) => <UserRound color={color} size={size} />,
+          href: null,
           title: t("nav.profile"),
         }}
       />

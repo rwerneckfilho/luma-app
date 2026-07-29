@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Linking, Share, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
+import { Bell, Globe2, Info, KeyRound, UserRound } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/useAuth";
 import {
@@ -18,8 +19,8 @@ import {
 import type { UserProfile, WhatsAppVerificationStartResponse } from "../../me/types";
 import { createProfilePhotoSignedUrl, pickAndUploadProfilePhoto } from "../../profilePhotos/native";
 import { useNotifications } from "../../notifications/useNotifications";
-import { colors, spacing } from "../../design/theme";
-import { Body, Button, Card, Choice, Field, Screen, Section, Sheet, StateMessage, ToggleRow, nativeStyles } from "../shared/native";
+import { colors, fonts, radii, spacing } from "../../design/theme";
+import { Accordion, Body, Button, Card, Choice, Field, Screen, Section, Sheet, StateMessage, ToggleRow, nativeStyles } from "../shared/native";
 import { useVerificationCountdown } from "../shared/useVerificationCountdown";
 
 export function ProfileScreen() {
@@ -63,6 +64,10 @@ export function ProfileScreen() {
 
   const toggleNotifications = async (kind: "app" | "whatsapp", enabled: boolean) => {
     if (!preferences.data) return;
+    if (kind === "whatsapp" && enabled && !preferences.data.whatsapp_verified) {
+      setWhatsappVisible(true);
+      return;
+    }
     try {
       if (kind === "app" && enabled && !notifications.registration) {
         await notifications.enableCurrentDevice();
@@ -98,21 +103,21 @@ export function ProfileScreen() {
       {profile.isError ? <StateMessage action={<Button onPress={refresh}>{t("common.tryAgain")}</Button>} title={t("settings.failedLoadProfile")} /> : null}
       {profile.data ? (
         <>
-          <Card>
-            <View style={styles.profileHeader}>
+          <View style={styles.profileHero}>
+            <View style={styles.avatarFrame}>
               <View style={styles.avatar}>
                 {photoUrl ? <Image contentFit="cover" source={{ uri: photoUrl }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(profile.data.full_name)}</Text>}
               </View>
-              <View style={styles.flex}>
-                <Text style={styles.name}>{profile.data.full_name || t("home.personFallback")}</Text>
-                <Body muted>{profile.data.email || user?.email}</Body>
-              </View>
+            </View>
+            <View style={styles.heroCopy}>
+              <Text style={styles.name}>{profile.data.full_name || t("home.personFallback")}</Text>
+              <Body muted>{profile.data.email || user?.email}</Body>
             </View>
             <View style={nativeStyles.actionRow}>
               <Button loading={photoBusy} onPress={() => void changePhoto()} secondary>{t(photoUrl ? "settings.changeProfilePhoto" : "settings.addProfilePhoto")}</Button>
               <Button onPress={() => setEditVisible(true)} secondary>{t("settings.editProfile")}</Button>
             </View>
-          </Card>
+          </View>
 
           <Section title={t("settings.myLumaId")}>
             <Card>
@@ -125,10 +130,37 @@ export function ProfileScreen() {
             </Card>
           </Section>
 
-          <Section title={t("settings.notifications")}>
-            {preferences.isLoading ? <StateMessage loading title={t("settings.loadingNotifications")} /> : null}
-            {preferences.data ? (
-              <Card>
+          <Section title={t("settings.account")}>
+            <Accordion
+              defaultExpanded
+              icon={UserRound}
+              subtitle={profile.data.email || user?.email || undefined}
+              title={t("settings.account")}
+            >
+              <View style={styles.detailRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.detailLabel}>{t("settings.fullName")}</Text>
+                  <Body muted>{profile.data.full_name || t("home.personFallback")}</Body>
+                </View>
+                <Button onPress={() => setEditVisible(true)} variant="ghost">{t("common.edit")}</Button>
+              </View>
+              <View style={styles.detailRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.detailLabel}>{t("settings.email")}</Text>
+                  <Body muted>{profile.data.email || user?.email}</Body>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <Text style={styles.detailLabel}>{t("settings.currentWhatsapp")}</Text>
+              <Body>{profile.data.whatsapp_delivery_phone_e164 || profile.data.phone_e164}</Body>
+              <Body muted>{profile.data.whatsapp_delivery_phone_verified_at ? t("settings.identityVerified") : t("whatsappVerification.unverifiedPhone")}</Body>
+              <Button onPress={() => setWhatsappVisible(true)} secondary>{t(profile.data.whatsapp_delivery_phone_verified_at ? "settings.changeWhatsapp" : "whatsappVerification.verifyNow")}</Button>
+            </Accordion>
+
+            <Accordion icon={Bell} title={t("settings.notifications")}>
+              {preferences.isLoading ? <StateMessage loading title={t("settings.loadingNotifications")} /> : null}
+              {preferences.data ? (
+                <>
                 <ToggleRow
                   description={t("settings.appNotificationsDescription")}
                   label={t("settings.appNotifications")}
@@ -139,8 +171,9 @@ export function ProfileScreen() {
                   description={t("settings.whatsappRemindersDescription")}
                   label={t("settings.whatsappReminders")}
                   onValueChange={(value) => void toggleNotifications("whatsapp", value)}
-                  value={preferences.data.whatsapp_notifications_enabled}
+                  value={preferences.data.whatsapp_verified && preferences.data.whatsapp_notifications_enabled}
                 />
+                {!preferences.data.whatsapp_verified ? <Body muted>{t("whatsappVerification.unverifiedPhone")}</Body> : null}
                 <Body muted>
                   {t("settings.notificationMode.title")}: {t(`settings.notificationMode.${preferences.data.notification_mode}`)}
                 </Body>
@@ -157,26 +190,35 @@ export function ProfileScreen() {
                   </>
                 )}
                 {notifications.error ? <Body>{notifications.error}</Body> : null}
-              </Card>
-            ) : null}
-          </Section>
+                <Body muted>{t("settings.notificationFootnote")}</Body>
+                </>
+              ) : null}
+            </Accordion>
 
-          <Section title={t("settings.currentWhatsapp")}>
-            <Card>
-              <Body>{profile.data.whatsapp_delivery_phone_e164 || profile.data.phone_e164}</Body>
-              <Body muted>{profile.data.whatsapp_delivery_phone_verified_at ? t("settings.identityVerified") : t("whatsappVerification.unverifiedPhone")}</Body>
-              <Button onPress={() => setWhatsappVisible(true)} secondary>{t(profile.data.whatsapp_delivery_phone_verified_at ? "settings.changeWhatsapp" : "whatsappVerification.verifyNow")}</Button>
-            </Card>
-          </Section>
+            <Accordion icon={Globe2} title={t("settings.regionalLanguage")}>
+              <View style={styles.detailRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.detailLabel}>{t("settings.language")}</Text>
+                  <Body muted>{localeName(profile.data.locale)}</Body>
+                </View>
+              </View>
+              <View style={styles.detailRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.detailLabel}>{t("settings.timezone")}</Text>
+                  <Body muted>{profile.data.timezone}</Body>
+                </View>
+                <Button onPress={() => setEditVisible(true)} variant="ghost">{t("common.edit")}</Button>
+              </View>
+            </Accordion>
 
-          <Section title={t("settings.security")}>
-            <Card>
+            <Accordion icon={KeyRound} title={t("settings.security")}>
               <Button onPress={() => setPasswordVisible(true)} secondary>{t("settings.changePassword")}</Button>
               <Button danger loading={logoutBusy} onPress={() => void logout()}>{t("settings.logout")}</Button>
-            </Card>
-          </Section>
-          <Section title={t("settings.about")}>
-            <Card><Body muted>{t("settings.privacyPolicy")} • {t("settings.termsOfService")} — {t("common.comingSoon")}</Body></Card>
+            </Accordion>
+
+            <Accordion icon={Info} title={t("settings.about")}>
+              <Body muted>{t("settings.privacyPolicy")} • {t("settings.termsOfService")} - {t("common.comingSoon")}</Body>
+            </Accordion>
           </Section>
         </>
       ) : null}
@@ -193,30 +235,44 @@ function ProfileEditSheet({ onClose, profile, visible }: { onClose: () => void; 
   const [name, setName] = useState("");
   const [locale, setLocale] = useState("pt-BR");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     if (!profile || !visible) return;
     setName(profile.full_name ?? "");
     setLocale(profile.locale);
     setTimezone(profile.timezone);
+    setNameError(null);
+    setTimezoneError(null);
+    setSaveError(null);
   }, [profile, visible]);
   const save = async () => {
     if (!profile) return;
+    const trimmedName = name.trim();
+    const nextNameError = trimmedName ? null : t("validation.fullNameRequired");
+    const nextTimezoneError = isValidTimezone(timezone) ? null : t("validation.timezoneRequired");
+    setNameError(nextNameError);
+    setTimezoneError(nextTimezoneError);
+    setSaveError(null);
+    if (nextNameError || nextTimezoneError) return;
     try {
-      await mutation.mutateAsync({ full_name: name.trim(), locale, phone_e164: profile.phone_e164, timezone });
+      await mutation.mutateAsync({ full_name: trimmedName, locale, phone_e164: profile.phone_e164, timezone: timezone.trim() });
       onClose();
     } catch (error) {
-      Alert.alert(t("settings.failedUpdateProfile"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
+      setSaveError(error instanceof Error ? error.message : t("common.somethingWentWrong"));
     }
   };
   return (
     <Sheet onClose={onClose} title={t("settings.editProfile")} visible={visible}>
-      <Field label={t("settings.fullName")} onChangeText={setName} value={name} />
+      {saveError ? <Body>{saveError}</Body> : null}
+      <Field error={nameError ?? undefined} label={t("settings.fullName")} onChangeText={(value) => { setName(value); setNameError(null); }} value={name} />
       <Choice label={t("settings.language")} onChange={setLocale} options={[
         { label: "Português (Brasil)", value: "pt-BR" },
         { label: "English", value: "en" },
         { label: "Español", value: "es" },
       ]} value={locale} />
-      <Field label={t("settings.timezone")} onChangeText={setTimezone} value={timezone} />
+      <Field autoCapitalize="none" error={timezoneError ?? undefined} label={t("settings.timezone")} onChangeText={(value) => { setTimezone(value); setTimezoneError(null); }} value={timezone} />
       <Button loading={mutation.isPending} onPress={() => void save()}>{t("common.saveChanges")}</Button>
     </Sheet>
   );
@@ -379,12 +435,34 @@ function initials(name?: string | null) {
   return (name ?? "LUMA").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
 }
 
+function localeName(locale: string) {
+  if (locale === "pt-BR") return "Português (Brasil)";
+  if (locale === "es") return "Español";
+  return "English";
+}
+
+function isValidTimezone(value: string) {
+  const timezone = value.trim();
+  if (!timezone || !timezone.includes("/")) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const styles = StyleSheet.create({
-  avatar: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 42, height: 84, justifyContent: "center", overflow: "hidden", width: 84 },
-  avatarImage: { height: 84, width: 84 },
-  avatarText: { color: colors.primary, fontSize: 26, fontWeight: "800" },
+  avatar: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 54, height: 108, justifyContent: "center", overflow: "hidden", width: 108 },
+  avatarFrame: { borderColor: colors.surface, borderRadius: 58, borderWidth: 4 },
+  avatarImage: { height: 108, width: 108 },
+  avatarText: { color: colors.primary, fontFamily: fonts.headingBold, fontSize: 32 },
+  detailLabel: { color: colors.ink, fontFamily: fonts.bodySemibold, fontSize: 14 },
+  detailRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between" },
+  divider: { backgroundColor: colors.border, height: StyleSheet.hairlineWidth },
   flex: { flex: 1 },
-  lumaId: { color: colors.primary, fontSize: 28, fontWeight: "900", letterSpacing: 2 },
-  name: { color: colors.ink, fontSize: 22, fontWeight: "800" },
-  profileHeader: { alignItems: "center", flexDirection: "row", gap: spacing.lg },
+  heroCopy: { alignItems: "center", gap: spacing.xs },
+  lumaId: { color: colors.primary, fontFamily: fonts.headingBold, fontSize: 28, letterSpacing: 2 },
+  name: { color: colors.ink, fontFamily: fonts.headingBold, fontSize: 26, textAlign: "center" },
+  profileHero: { alignItems: "center", backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.md, padding: spacing.xl },
 });

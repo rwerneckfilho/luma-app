@@ -1,28 +1,38 @@
-import { useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import {
+  CalendarDays,
+  CheckCircle2,
+  CircleGauge,
+  ClockAlert,
+  ListChecks,
+  RotateCcw,
+  SkipForward,
+  TimerOff,
+} from "lucide-react-native";
+import type { ComponentType } from "react";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useAsNeededUsageLogs } from "../../asNeededUsageLogs/hooks";
+import { colors, fonts, radii, spacing } from "../../design/theme";
 import { useAdherenceHistory, useAdherenceHistoryFilters } from "../../history/hooks";
 import type { AdherenceHistoryFilters, AdherenceHistoryStatus } from "../../history/types";
 import {
   dateDaysAgo,
   dateRangeToIso,
-  formatAsNeededUsageDateTime,
-  formatHistoryDate,
-  formatHistoryTime,
   getHistoryStatusLabelKey,
-  getTimelineDescription,
   summaryPercent,
   toDateInputValue,
   validateHistoryDateRange,
 } from "../../history/historyUtils";
-import { useAsNeededUsageLogs } from "../../asNeededUsageLogs/hooks";
-import { colors, spacing } from "../../design/theme";
-import { Body, Button, Card, Choice, Field, Screen, Section, StateMessage, nativeStyles } from "../shared/native";
+import { Accordion, Body, Button, Field, Label, Screen, Section, Sheet, StateMessage } from "../shared/native";
+import { HistoryTimeline } from "./HistoryTimeline";
+import { combineHistoryResources } from "./historyViewModel";
 
 type Preset = "today" | "7" | "30" | "custom";
+type Option = { label: string; value: string };
 
 function filtersForPreset(preset: Preset, from: string, to: string): AdherenceHistoryFilters {
-  if (preset === "today") return { date: toDateInputValue() };
+  if (preset === "today") return { date: to };
   if (preset === "7") return { date_from: dateDaysAgo(new Date(), 6), date_to: toDateInputValue() };
   if (preset === "30") return { date_from: dateDaysAgo(new Date(), 29), date_to: toDateInputValue() };
   return { date_from: from, date_to: to };
@@ -30,13 +40,16 @@ function filtersForPreset(preset: Preset, from: string, to: string): AdherenceHi
 
 export function HistoryScreen() {
   const { i18n, t } = useTranslation();
-  const [preset, setPreset] = useState<Preset>("7");
+  const { width } = useWindowDimensions();
+  const [preset, setPreset] = useState<Preset>("today");
   const [dateFrom, setDateFrom] = useState(dateDaysAgo(new Date(), 6));
   const [dateTo, setDateTo] = useState(toDateInputValue());
   const [medicationId, setMedicationId] = useState("");
   const [doctor, setDoctor] = useState("");
   const [status, setStatus] = useState<AdherenceHistoryStatus | "">("");
-  const dateError = preset === "custom" ? validateHistoryDateRange(dateFrom, dateTo) : null;
+  const dateError = preset === "custom"
+    ? validateHistoryDateRange(dateFrom, dateTo)
+    : preset === "today" ? validateHistoryDateRange(dateTo, dateTo) : null;
   const baseFilters = filtersForPreset(preset, dateFrom, dateTo);
   const filters: AdherenceHistoryFilters = {
     ...baseFilters,
@@ -53,118 +66,83 @@ export function HistoryScreen() {
     medication_id: medicationId || undefined,
     limit: 100,
   }, includeAsNeeded && dateError === null);
+  const resourceState = combineHistoryResources([
+    history,
+    { ...prn, enabled: includeAsNeeded },
+    filterOptions,
+  ]);
   const locale = i18n.resolvedLanguage ?? "pt-BR";
-
-  const timeline = useMemo(() => {
-    const scheduled = (history.data?.items ?? []).map((item) => ({
-      at: item.scheduled_for,
-      id: item.event_id,
-      kind: "scheduled" as const,
-      item,
-    }));
-    const asNeeded = (includeAsNeeded ? prn.data ?? [] : []).map((item) => ({
-      at: item.used_at,
-      id: item.id,
-      item,
-      kind: "prn" as const,
-    }));
-    return [...scheduled, ...asNeeded].sort((a, b) => (a.at < b.at ? 1 : -1));
-  }, [history.data?.items, includeAsNeeded, prn.data]);
 
   const refresh = () => {
     if (dateError === null) {
       void history.refetch();
-      void prn.refetch();
+      if (includeAsNeeded) void prn.refetch();
     }
     void filterOptions.refetch();
   };
+  const clearFilters = () => {
+    setPreset("today");
+    setDateFrom(dateDaysAgo(new Date(), 6));
+    setDateTo(toDateInputValue());
+    setMedicationId("");
+    setDoctor("");
+    setStatus("");
+  };
+
+  const presetOptions: Option[] = [
+    { label: t("history.today"), value: "today" },
+    { label: t("history.last7Days"), value: "7" },
+    { label: t("history.last30Days"), value: "30" },
+    { label: t("history.custom"), value: "custom" },
+  ];
+  const medicationOptions: Option[] = [
+    { label: t("history.allMedications"), value: "" },
+    ...(filterOptions.data?.medications ?? []).map((item) => ({ label: item.name, value: item.id })),
+  ];
+  const doctorOptions: Option[] = [
+    { label: t("history.allDoctors"), value: "" },
+    ...(filterOptions.data?.doctors ?? []).map((name) => ({ label: name, value: name })),
+  ];
+  const statusOptions: Option[] = [
+    { label: t("history.allStatuses"), value: "" },
+    ...(filterOptions.data?.statuses ?? []).map((value) => ({ label: t(getHistoryStatusLabelKey(value)), value })),
+  ];
 
   return (
-    <Screen onRefresh={refresh} refreshing={history.isRefetching || prn.isRefetching} title={t("history.title")}>
-      <Choice<Preset>
-        label={t("history.datePreset")}
-        onChange={setPreset}
-        options={[
-          { label: t("history.today"), value: "today" },
-          { label: t("history.last7Days"), value: "7" },
-          { label: t("history.last30Days"), value: "30" },
-          { label: t("history.custom"), value: "custom" },
-        ]}
-        value={preset}
-      />
-      {preset === "custom" ? (
-        <View style={styles.row}>
-          <View style={styles.flex}><Field error={dateError === "invalid_start" ? t("validation.validStartDate") : undefined} label={t("history.dateFrom")} onChangeText={setDateFrom} value={dateFrom} /></View>
-          <View style={styles.flex}><Field error={dateError === "invalid_end" ? t("validation.validEndDate") : dateError === "end_before_start" ? t("validation.endDateAfterStart") : undefined} label={t("history.dateTo")} onChangeText={setDateTo} value={dateTo} /></View>
+    <Screen onRefresh={refresh} refreshing={history.isRefetching || prn.isRefetching || filterOptions.isRefetching} title={t("history.title")}>
+      <Accordion defaultExpanded title={t("history.filters")}>
+        <View style={styles.filterGrid}>
+          <CompactSelect label={t("history.datePreset")} onChange={(value) => setPreset(value as Preset)} options={presetOptions} value={preset} />
+          <CompactSelect label={t("history.medication")} onChange={setMedicationId} options={medicationOptions} value={medicationId} />
+          <CompactSelect label={t("history.doctor")} onChange={setDoctor} options={doctorOptions} value={doctor} />
+          <CompactSelect label={t("history.status")} onChange={(value) => setStatus(value as AdherenceHistoryStatus | "")} options={statusOptions} value={status} />
         </View>
-      ) : null}
-      <Choice
-        label={t("history.medication")}
-        onChange={setMedicationId}
-        options={[
-          { label: t("history.allMedications"), value: "" },
-          ...(filterOptions.data?.medications ?? []).map((item) => ({ label: item.name, value: item.id })),
-        ]}
-        value={medicationId}
-      />
-      <Choice
-        label={t("history.doctor")}
-        onChange={setDoctor}
-        options={[
-          { label: t("history.allDoctors"), value: "" },
-          ...(filterOptions.data?.doctors ?? []).map((name) => ({ label: name, value: name })),
-        ]}
-        value={doctor}
-      />
-      <Choice
-        label={t("history.status")}
-        onChange={(value) => setStatus(value as AdherenceHistoryStatus | "")}
-        options={[
-          { label: t("history.allStatuses"), value: "" },
-          ...(filterOptions.data?.statuses ?? []).map((value) => ({ label: t(getHistoryStatusLabelKey(value)), value })),
-        ]}
-        value={status}
-      />
-      {history.isLoading ? <StateMessage loading title={t("history.loading")} /> : null}
-      {history.isError ? <StateMessage action={<Button onPress={refresh}>{t("common.tryAgain")}</Button>} title={t("history.unableToLoad")} /> : null}
-      {history.data ? (
+        {preset === "today" ? (
+          <Field error={dateError ? t("validation.validEndDate") : undefined} label={t("history.date")} onChangeText={setDateTo} value={dateTo} />
+        ) : null}
+        {preset === "custom" ? (
+          <View style={[styles.dateRow, width < 480 && styles.dateRowNarrow]}>
+            <View style={styles.flex}><Field error={dateError === "invalid_start" ? t("validation.validStartDate") : undefined} label={t("history.dateFrom")} onChangeText={setDateFrom} value={dateFrom} /></View>
+            <View style={styles.flex}><Field error={dateError === "invalid_end" ? t("validation.validEndDate") : dateError === "end_before_start" ? t("validation.endDateAfterStart") : undefined} label={t("history.dateTo")} onChangeText={setDateTo} value={dateTo} /></View>
+          </View>
+        ) : null}
+        <View style={styles.clearRow}><Button icon={RotateCcw} onPress={clearFilters} variant="ghost">{t("history.clearFilters")}</Button></View>
+      </Accordion>
+
+      {resourceState.isLoading ? <StateMessage loading title={t("history.loading")} /> : null}
+      {!resourceState.isLoading && resourceState.isError ? <StateMessage action={<Button onPress={refresh}>{t("common.tryAgain")}</Button>} title={t("history.unableToLoad")} /> : null}
+      {!resourceState.isLoading && !resourceState.isError && history.data ? (
         <>
           <View style={styles.metrics}>
-            <Metric label={t("history.adherence")} value={`${summaryPercent(history.data.summary)}%`} />
-            <Metric label={t("history.taken")} value={String(history.data.summary.total_taken)} />
-            <Metric label={t("history.takenLate")} value={String(history.data.summary.total_taken_late ?? 0)} />
-            <Metric label={t("history.skipped")} value={String(history.data.summary.total_skipped)} />
-            <Metric label={t("history.overdue")} value={String(history.data.summary.total_overdue)} />
+            <Metric icon={ListChecks} label={t("history.scheduled")} value={String(history.data.summary.total_scheduled)} />
+            <Metric icon={CheckCircle2} label={t("history.taken")} value={String(history.data.summary.total_taken)} tone="success" />
+            <Metric icon={SkipForward} label={t("history.skipped")} value={String(history.data.summary.total_skipped)} tone="danger" />
+            <Metric icon={TimerOff} label={t("history.overdue")} value={String(history.data.summary.total_overdue)} tone="danger" />
+            <Metric icon={ClockAlert} label={t("history.takenLate")} value={String(history.data.summary.total_taken_late ?? 0)} tone="warning" />
+            <Metric icon={CircleGauge} label={t("history.adherence")} value={`${Math.round(summaryPercent(history.data.summary))}%`} tone="success" />
           </View>
           <Section title={t("history.timeline")}>
-            {timeline.length === 0 ? <StateMessage body={t("history.noHistoryBody")} title={t("history.noHistory")} /> : null}
-            {timeline.map((entry) =>
-              entry.kind === "prn" ? (
-                <Card key={`prn-${entry.id}`}>
-                  <View style={nativeStyles.rowBetween}>
-                    <Text style={styles.name}>{entry.item.medication_name}</Text>
-                    <Text style={nativeStyles.badge}>{t("history.asNeeded")}</Text>
-                  </View>
-                  <Body>{formatAsNeededUsageDateTime(t, locale, entry.item.used_at, history.data.timezone)}</Body>
-                  {entry.item.dose_quantity != null ? <Body muted>{entry.item.dose_quantity} {entry.item.dose_unit}</Body> : null}
-                  {entry.item.note ? <Body muted>{entry.item.note}</Body> : null}
-                </Card>
-              ) : (
-                <Card key={`scheduled-${entry.id}`}>
-                  <View style={nativeStyles.rowBetween}>
-                    <Text style={styles.name}>{entry.item.medication_name}</Text>
-                    <Text style={nativeStyles.badge}>{t(getHistoryStatusLabelKey(entry.item.status))}</Text>
-                  </View>
-                  <Body>{formatHistoryDate(locale, entry.item.scheduled_for.slice(0, 10))} • {formatHistoryTime(locale, entry.item.scheduled_for, history.data.timezone)}</Body>
-                  <Body muted>{getTimelineDescription(t, entry.item.status, {
-                    delayMinutes: entry.item.delay_minutes,
-                    skippedAt: formatHistoryTime(locale, entry.item.skipped_at, history.data.timezone),
-                    takenAt: formatHistoryTime(locale, entry.item.taken_at, history.data.timezone),
-                  })}</Body>
-                  {entry.item.recorded_by_display_name ? <Body muted>{t("history.recordedBy", { name: entry.item.recorded_by_display_name })}</Body> : null}
-                </Card>
-              ),
-            )}
+            <HistoryTimeline asNeeded={includeAsNeeded ? prn.data ?? [] : []} items={history.data.items} locale={locale} timezone={history.data.timezone} />
           </Section>
         </>
       ) : null}
@@ -172,20 +150,55 @@ export function HistoryScreen() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function CompactSelect({ label, onChange, options, value }: { label: string; onChange: (value: string) => void; options: Option[]; value: string }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
   return (
-    <Card style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Body muted>{label}</Body>
-    </Card>
+    <View style={styles.selectWrap}>
+      <Label>{label}</Label>
+      <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={() => setOpen(true)} style={({ pressed }) => [styles.select, pressed && styles.pressed]}>
+        <Text numberOfLines={1} style={styles.selectText}>{selected?.label}</Text>
+        <CalendarDays color={colors.primary} size={18} />
+      </Pressable>
+      <Sheet onClose={() => setOpen(false)} title={label} visible={open}>
+        {options.map((option) => (
+          <Pressable accessibilityRole="radio" accessibilityState={{ checked: option.value === value }} key={`${label}-${option.value}`} onPress={() => { onChange(option.value); setOpen(false); }} style={[styles.option, option.value === value && styles.optionSelected]}>
+            <Text style={[styles.optionText, option.value === value && styles.optionTextSelected]}>{option.label}</Text>
+            {option.value === value ? <CheckCircle2 color={colors.primary} size={20} /> : null}
+          </Pressable>
+        ))}
+      </Sheet>
+    </View>
+  );
+}
+
+function Metric({ icon: Icon, label, tone = "primary", value }: { icon: ComponentType<{ color?: string; size?: number }>; label: string; tone?: "primary" | "success" | "danger" | "warning"; value: string }) {
+  const color = colors[tone];
+  return (
+    <View style={styles.metric}>
+      <View style={[styles.metricIcon, { backgroundColor: tone === "primary" ? colors.primarySoft : colors[`${tone}Soft`] }]}><Icon color={color} size={20} /></View>
+      <View style={styles.metricCopy}><Text style={[styles.metricValue, { color }]}>{value}</Text><Body muted>{label}</Body></View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  clearRow: { alignItems: "flex-start" },
+  dateRow: { flexDirection: "row", gap: spacing.md },
+  dateRowNarrow: { flexDirection: "column" },
+  filterGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   flex: { flex: 1 },
-  metric: { minWidth: "45%" },
+  metric: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.sm, borderWidth: 1, flexBasis: 150, flexDirection: "row", flexGrow: 1, gap: spacing.md, minHeight: 82, padding: spacing.md },
+  metricCopy: { flex: 1 },
+  metricIcon: { alignItems: "center", borderRadius: radii.sm, height: 36, justifyContent: "center", width: 36 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  metricValue: { color: colors.primary, fontSize: 26, fontWeight: "800" },
-  name: { color: colors.ink, flex: 1, fontSize: 17, fontWeight: "800" },
-  row: { flexDirection: "row", gap: spacing.md },
+  metricValue: { fontFamily: fonts.headingBold, fontSize: 24, fontWeight: "800" },
+  option: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", justifyContent: "space-between", minHeight: 52, paddingHorizontal: spacing.md },
+  optionSelected: { backgroundColor: colors.primarySoft },
+  optionText: { color: colors.ink, flex: 1, fontFamily: fonts.body, fontSize: 16 },
+  optionTextSelected: { color: colors.primary, fontFamily: fonts.bodySemibold },
+  pressed: { opacity: 0.75 },
+  select: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md },
+  selectText: { color: colors.ink, flex: 1, fontFamily: fonts.body, fontSize: 14 },
+  selectWrap: { flexBasis: 210, flexGrow: 1, gap: spacing.xs, minWidth: 150 },
 });

@@ -6,6 +6,8 @@ import type { MedicationImportItem } from "../../medicationImports/types";
 import type { CreateRoutinePayload, Routine } from "../../routines/types";
 import {
   medicationImportItemToFormValues,
+  medicationWizardStepForIssue,
+  MEDICATION_WIZARD_STEPS,
   normalizeImportedTime,
   persistRoutinePayloads,
   type RoutineSaveCheckpoint,
@@ -164,6 +166,22 @@ describe("medication AI import mapping", () => {
 
     expect(values.schedule_type).toBe("interval");
     expect(values.interval_hours).toBeUndefined();
+  });
+});
+
+describe("six-step medication wizard", () => {
+  it("keeps the visual flow at six steps", () => {
+    expect(MEDICATION_WIZARD_STEPS).toBe(6);
+  });
+
+  it.each([
+    ["name", 0],
+    ["treatment_type", 1],
+    ["schedule_type", 2],
+    ["scheduled_doses", 3],
+    ["instructions", 4],
+  ])("routes a %s validation issue to step %s", (field, expectedStep) => {
+    expect(medicationWizardStepForIssue([field])).toBe(expectedStep);
   });
 });
 

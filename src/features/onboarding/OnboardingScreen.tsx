@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Check } from "lucide-react-native";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   useCompleteOnboarding,
+  useNotificationPreferences,
   useResendWhatsAppVerification,
   useSendSampleReminder,
   useStartWhatsAppVerification,
@@ -28,11 +31,14 @@ import { MedicationEditorSheet } from "../medications/MedicationEditorSheet";
 
 type ChannelChoice = "app_only" | "whatsapp_only" | "both";
 
+const onboardingStepKey = "luma:onboarding-step";
+
 export function OnboardingScreen() {
   const { t } = useTranslation();
   const profile = useUserProfile();
   const medications = useMedications();
   const routines = useRoutines();
+  const preferences = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
   const sample = useSendSampleReminder();
   const complete = useCompleteOnboarding();
@@ -43,6 +49,25 @@ export function OnboardingScreen() {
   const whatsappVerificationRequired =
     env.whatsappVerificationRequired &&
     (profile.data?.onboarding?.whatsapp_verification_required ?? true);
+
+  const suggestedStep = useMemo(() => {
+    if (profile.data?.onboarding?.sample_reminder_sent_at) return 4;
+    if ((routines.data?.length ?? 0) > 0) return 3;
+    if ((preferences.data?.effective_channels.length ?? 0) > 0) return 2;
+    return 0;
+  }, [preferences.data?.effective_channels.length, profile.data?.onboarding?.sample_reminder_sent_at, routines.data?.length]);
+
+  useEffect(() => {
+    void AsyncStorage.getItem(onboardingStepKey).then((stored) => {
+      const persisted = Number(stored);
+      setStep(Math.max(suggestedStep, Number.isInteger(persisted) ? Math.min(4, Math.max(0, persisted)) : 0));
+    });
+  }, [suggestedStep]);
+
+  const goToStep = (next: number) => {
+    setStep(next);
+    void AsyncStorage.setItem(onboardingStepKey, String(next));
+  };
 
   if (profile.isLoading) return <Screen><StateMessage loading title={t("common.loading")} /></Screen>;
   if (profile.isError) {
@@ -65,7 +90,7 @@ export function OnboardingScreen() {
         app_notifications_enabled: channel !== "whatsapp_only",
         whatsapp_notifications_enabled: channel !== "app_only",
       });
-      setStep(1);
+      goToStep(1);
     } catch (error) {
       Alert.alert(t("onboarding.notifications.appSetupFailed"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
     }
@@ -74,6 +99,7 @@ export function OnboardingScreen() {
   const finish = async () => {
     try {
       await complete.mutateAsync();
+      await AsyncStorage.removeItem(onboardingStepKey);
       router.replace("/(app)/home");
     } catch (error) {
       Alert.alert(t("common.somethingWentWrong"), error instanceof Error ? error.message : t("common.somethingWentWrong"));
@@ -83,6 +109,14 @@ export function OnboardingScreen() {
   return (
     <Screen title="LUMA">
       <Text style={styles.step}>{t("onboarding.progress", { current: step + 1, total: 5 })}</Text>
+      <View accessibilityLabel={t("onboarding.progressLabel")} style={styles.stepper}>
+        {[0, 1, 2, 3, 4].map((index) => (
+          <View key={index} style={styles.stepItem}>
+            <View style={[styles.stepCircle, index <= step && styles.stepCircleActive]}>{index < step ? <Check color={colors.surface} size={14} /> : <Text style={[styles.stepNumber, index <= step && styles.stepNumberActive]}>{index + 1}</Text>}</View>
+            {index < 4 ? <View style={[styles.stepLine, index < step && styles.stepLineActive]} /> : null}
+          </View>
+        ))}
+      </View>
       {step === 0 ? (
         <Card>
           <Text style={styles.heading}>{t("onboarding.notifications.title")}</Text>
@@ -106,13 +140,13 @@ export function OnboardingScreen() {
           <Card>
             <Text style={styles.heading}>{t("whatsappVerification.verifiedPhone")}</Text>
             <Body muted>{channel === "app_only" ? t("onboarding.notifications.skipWhatsApp") : profile.data?.whatsapp_delivery_phone_e164}</Body>
-            <Button onPress={() => setStep(2)}>{t("common.continue")}</Button>
+            <Button onPress={() => goToStep(2)}>{t("common.continue")}</Button>
           </Card>
         ) : (
           <OnboardingWhatsApp
             onVerified={() => {
               void profile.refetch();
-              setStep(2);
+              goToStep(2);
             }}
             phone={profile.data?.phone_e164 ?? ""}
           />
@@ -126,7 +160,7 @@ export function OnboardingScreen() {
           <Button onPress={() => setMedicationVisible(true)}>{t("medications.addCta")}</Button>
           <Button
             disabled={!medications.data?.length || !routines.data?.length}
-            onPress={() => setStep(3)}
+            onPress={() => goToStep(3)}
             secondary
           >
             {t("common.continue")}
@@ -137,8 +171,8 @@ export function OnboardingScreen() {
         <Card>
           <Text style={styles.heading}>{t("onboarding.sample.title")}</Text>
           <Body muted>{t("onboarding.sample.description")}</Body>
-          <Button loading={sample.isPending} onPress={() => void sample.mutateAsync().then(() => setStep(4)).catch((error) => Alert.alert(t("common.somethingWentWrong"), error instanceof Error ? error.message : t("common.somethingWentWrong")))}>{t("onboarding.sample.send")}</Button>
-          <Button onPress={() => setStep(4)} secondary>{t("common.continue")}</Button>
+          <Button loading={sample.isPending} onPress={() => void sample.mutateAsync().then(() => goToStep(4)).catch((error) => Alert.alert(t("common.somethingWentWrong"), error instanceof Error ? error.message : t("common.somethingWentWrong")))}>{t("onboarding.sample.send")}</Button>
+          <Button onPress={() => goToStep(4)} secondary>{t("common.continue")}</Button>
         </Card>
       ) : null}
       {step === 4 ? <OnboardingCare onFinish={() => void finish()} finishing={complete.isPending} /> : null}
@@ -300,4 +334,12 @@ function onboardingCareBlockKey(reason: NonNullable<CarePublicUser["invite_block
 const styles = StyleSheet.create({
   heading: { color: colors.ink, fontSize: 22, fontWeight: "800" },
   step: { color: colors.primary, fontSize: 14, fontWeight: "800", marginBottom: spacing.sm },
+  stepCircle: { alignItems: "center", borderColor: colors.border, borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", width: 32 },
+  stepCircleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepItem: { alignItems: "center", flex: 1, flexDirection: "row" },
+  stepLine: { backgroundColor: colors.border, flex: 1, height: 2 },
+  stepLineActive: { backgroundColor: colors.primary },
+  stepNumber: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  stepNumberActive: { color: colors.surface },
+  stepper: { flexDirection: "row", marginBottom: spacing.lg },
 });

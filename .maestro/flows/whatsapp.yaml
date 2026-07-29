@@ -1,0 +1,10 @@
+appId: life.myluma.app
+name: WhatsApp verification visual state
+tags: [visual, whatsapp]
+---
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: whatsapp, ROUTE: "/whatsapp-verification" }
+- assertVisible: "WhatsApp"
+- takeScreenshot: "artifacts/whatsapp"
+

@@ -1,0 +1,11 @@
+appId: life.myluma.app
+name: Auth visual state
+tags: [visual, auth]
+---
+- runFlow:
+    file: ../helpers/launch-scenario.yaml
+    env: { SCENARIO: auth, ROUTE: "/(auth)/login" }
+- runFlow:
+    file: ../helpers/capture-scenario.yaml
+    env: { EXPECTED: "Endereço de e-mail", SCREENSHOT: "artifacts/auth" }
+

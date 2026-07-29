@@ -13,8 +13,11 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import { KeyRound, Lock, Mail, Phone, UserRound } from "lucide-react-native";
+import * as WebBrowser from "expo-web-browser";
 import {
   AuthButton,
+  AuthAccessOptions,
   AuthFeedback,
   AuthField,
   AuthHeading,
@@ -36,6 +39,8 @@ import { formatSignupError } from "../../auth/signupErrors";
 import { useAuth } from "../../auth/useAuth";
 import { colors, radii, spacing } from "../../design/theme";
 
+const temporaryAccessCode = "RRJLUMA2026";
+
 export default function RegisterScreen() {
   "use no memo";
 
@@ -43,6 +48,9 @@ export default function RegisterScreen() {
   const { signUp } = useAuth();
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
+  const [isSignupUnlocked, setIsSignupUnlocked] = useState(false);
   const locale = i18n.resolvedLanguage ?? "pt-BR";
   const countries = useMemo(() => getLocalizedPhoneCountries(locale), [locale]);
   const {
@@ -85,6 +93,15 @@ export default function RegisterScreen() {
     setCountrySearch("");
   };
 
+  const unlockSignup = () => {
+    if (accessCode.trim() === temporaryAccessCode) {
+      setAccessCodeError(null);
+      setIsSignupUnlocked(true);
+      return;
+    }
+    setAccessCodeError(t("auth.invalidAccessCode"));
+  };
+
   const submit = handleSubmit(async (values) => {
     try {
       await signUp({
@@ -106,16 +123,36 @@ export default function RegisterScreen() {
     <>
       <AuthScreen
         footer={(
-          <View style={authStyles.row}>
-            <Text style={authStyles.text}>{t("auth.alreadyHaveAccount")}</Text>
-            <Pressable onPress={() => router.replace("/(auth)/login")}>
-              <Text style={authStyles.link}>{t("auth.signIn")}</Text>
-            </Pressable>
-          </View>
+          <Pressable onPress={() => void WebBrowser.openBrowserAsync("https://myluma.life")}><Text style={authStyles.link}>{t("auth.joinWaitlist")}</Text></Pressable>
         )}
       >
         <View style={authStyles.stack}>
-          <AuthHeading subtitle={t("auth.registerSubtitle")} title={t("auth.registerTitle")} />
+          <AuthHeading
+            subtitle={isSignupUnlocked ? t("auth.registerSubtitle") : t("auth.closedTestingSubtitle")}
+            title={isSignupUnlocked ? t("auth.registerTitle") : t("auth.accessTitle")}
+          />
+          <AuthAccessOptions activeMode="code" onChange={(mode) => { if (mode === "account") router.replace("/(auth)/login"); }} />
+          {!isSignupUnlocked ? (
+            <>
+              <AuthField
+                autoCapitalize="characters"
+                autoComplete="off"
+                error={accessCodeError ?? undefined}
+                icon={KeyRound}
+                label={t("auth.accessCode")}
+                onChangeText={(value) => {
+                  setAccessCode(value);
+                  setAccessCodeError(null);
+                }}
+                onSubmitEditing={unlockSignup}
+                placeholder={t("auth.accessCodePlaceholder")}
+                returnKeyType="next"
+                value={accessCode}
+              />
+              <AuthButton onPress={unlockSignup} title={t("auth.accessCodeContinue")} />
+            </>
+          ) : (
+            <>
           <AuthFeedback message={errors.root?.message} />
           <Controller
             control={control}
@@ -125,6 +162,7 @@ export default function RegisterScreen() {
                 autoCapitalize="words"
                 autoComplete="name"
                 error={errors.full_name?.message}
+                icon={UserRound}
                 label={t("auth.fullName")}
                 onBlur={onBlur}
                 onChangeText={onChange}
@@ -141,6 +179,7 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 autoComplete="email"
                 error={errors.email?.message}
+                icon={Mail}
                 inputMode="email"
                 label={t("auth.emailAddress")}
                 onBlur={onBlur}
@@ -175,7 +214,8 @@ export default function RegisterScreen() {
             render={({ field: { onBlur, onChange, value } }) => (
               <AuthField
                 autoComplete="tel"
-                error={errors.phone_national?.message}
+                  error={errors.phone_national?.message}
+                  icon={Phone}
                 inputMode="tel"
                 label={t("auth.nationalPhoneNumber")}
                 onBlur={onBlur}
@@ -192,6 +232,7 @@ export default function RegisterScreen() {
               <AuthField
                 autoComplete="new-password"
                 error={errors.password?.message}
+                icon={Lock}
                 label={t("auth.password")}
                 onBlur={onBlur}
                 onChangeText={onChange}
@@ -206,6 +247,8 @@ export default function RegisterScreen() {
             title={t("auth.createAccount")}
           />
           <Text style={authStyles.text}>{t("auth.safetyNote")}</Text>
+            </>
+          )}
         </View>
       </AuthScreen>
 

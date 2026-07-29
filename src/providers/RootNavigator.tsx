@@ -37,20 +37,25 @@ export function RootNavigator() {
     env.whatsappVerificationRequired &&
     (profile?.onboarding?.whatsapp_verification_required ?? true) &&
     !whatsappVerified;
-  const needsOnboarding =
-    Boolean(session) && !isPasswordRecovery && (onboardingIncomplete || whatsappRequired);
+  const needsOnboarding = Boolean(session) && !isPasswordRecovery && onboardingIncomplete;
+  const needsWhatsappVerification =
+    Boolean(session) && !isPasswordRecovery && !onboardingIncomplete && whatsappRequired;
   const appReady =
-    Boolean(session) && !isPasswordRecovery && Boolean(profile) && !needsOnboarding;
+    Boolean(session) && !isPasswordRecovery && Boolean(profile) && !needsOnboarding && !needsWhatsappVerification;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="visual" />
       <Stack.Protected guard={!session}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
       <Stack.Screen name="auth/update-password" />
       <Stack.Protected guard={needsOnboarding}>
         <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={needsWhatsappVerification}>
+        <Stack.Screen name="whatsapp-verification" />
       </Stack.Protected>
       <Stack.Protected guard={appReady}>
         <Stack.Screen name="(app)" />

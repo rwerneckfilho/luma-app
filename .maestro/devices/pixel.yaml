@@ -1,0 +1,9 @@
+appId: life.myluma.app
+name: Pixel visual suite
+tags: [visual, pixel]
+---
+- runFlow: ../flows/auth.yaml
+- runFlow: ../flows/whatsapp.yaml
+- runFlow: ../flows/home-states.yaml
+- runFlow: ../flows/app-sections.yaml
+
