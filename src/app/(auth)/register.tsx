@@ -37,9 +37,8 @@ import {
 } from "../../auth/phoneCountries";
 import { formatSignupError } from "../../auth/signupErrors";
 import { useAuth } from "../../auth/useAuth";
+import { validateSignupInvite } from "../../auth/signupInvitesApi";
 import { colors, radii, spacing } from "../../design/theme";
-
-const temporaryAccessCode = "RRJLUMA2026";
 
 export default function RegisterScreen() {
   "use no memo";
@@ -51,6 +50,7 @@ export default function RegisterScreen() {
   const [accessCode, setAccessCode] = useState("");
   const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [isSignupUnlocked, setIsSignupUnlocked] = useState(false);
+  const [isValidatingCode, setIsValidatingCode] = useState(false);
   const locale = i18n.resolvedLanguage ?? "pt-BR";
   const countries = useMemo(() => getLocalizedPhoneCountries(locale), [locale]);
   const {
@@ -93,13 +93,23 @@ export default function RegisterScreen() {
     setCountrySearch("");
   };
 
-  const unlockSignup = () => {
-    if (accessCode.trim() === temporaryAccessCode) {
+  const unlockSignup = async () => {
+    setIsValidatingCode(true);
+    try {
+      const result = await validateSignupInvite(accessCode.trim());
+      if (!result.valid) {
+        setIsSignupUnlocked(false);
+        setAccessCodeError(t("auth.invalidAccessCode"));
+        return;
+      }
       setAccessCodeError(null);
       setIsSignupUnlocked(true);
-      return;
+    } catch {
+      setIsSignupUnlocked(false);
+      setAccessCodeError(t("api.unreachable"));
+    } finally {
+      setIsValidatingCode(false);
     }
-    setAccessCodeError(t("auth.invalidAccessCode"));
   };
 
   const submit = handleSubmit(async (values) => {
@@ -109,6 +119,7 @@ export default function RegisterScreen() {
         full_name: values.full_name,
         password: values.password,
         phone_e164: normalizePhoneForSubmit(values.phone_country, values.phone_national),
+        signup_invite_code: accessCode.trim(),
       });
       router.replace({
         pathname: "/(auth)/register-confirmation",
@@ -144,12 +155,16 @@ export default function RegisterScreen() {
                   setAccessCode(value);
                   setAccessCodeError(null);
                 }}
-                onSubmitEditing={unlockSignup}
+                onSubmitEditing={() => void unlockSignup()}
                 placeholder={t("auth.accessCodePlaceholder")}
                 returnKeyType="next"
                 value={accessCode}
               />
-              <AuthButton onPress={unlockSignup} title={t("auth.accessCodeContinue")} />
+              <AuthButton
+                loading={isValidatingCode}
+                onPress={() => void unlockSignup()}
+                title={t("auth.accessCodeContinue")}
+              />
             </>
           ) : (
             <>

@@ -213,6 +213,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           full_name: input.full_name.trim(),
           phone,
           phone_e164: phone,
+          signup_invite_code: input.signup_invite_code,
         },
       },
     });

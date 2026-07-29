@@ -6,6 +6,7 @@ export type SignUpInput = {
   full_name: string;
   password: string;
   phone_e164: string;
+  signup_invite_code: string;
 };
 
 export type AuthContextValue = {
