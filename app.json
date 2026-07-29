@@ -16,6 +16,9 @@
       "icon": "./assets/images/luma-icon.png",
       "bundleIdentifier": "life.myluma.app",
       "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
       "supportsTablet": true
     },
     "android": {
